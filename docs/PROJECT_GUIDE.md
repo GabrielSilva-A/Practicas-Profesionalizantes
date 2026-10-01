@@ -4,7 +4,7 @@
 
 **Versión:** 1.0
 **Estado:** Activo
-**Fase actual:** Fase 7 completada — Arquitectura
+**Fase actual:** Fase 8 en proceso — Diseño de API; Fase 7 en consolidación — Arquitectura mínima documentada
 **Propósito principal:** Contexto operativo para agentes de IA que participen en el desarrollo del sistema.
 
 ---
@@ -156,17 +156,14 @@ La empresa no tendrá acceso a las listas internas de nombramiento ni a la ident
 
 Cada trabajador tendrá una cuenta personal.
 
-Existen dos categorías operativas:
+La versión vigente de las reglas utiliza una única categoría operativa:
 
 ### SOCIO
 
 Trabajador que posee un número dentro de una lista de rotación de socios.
 
-### CHANGA
-
-Trabajador perteneciente a UATRE que participa en una lista de rotación independiente de changas.
-
-Socios y changas poseen reglas específicas que deberán consultarse en `business-rules.md`.
+Las referencias anteriores a changas no describen el modelo vigente. Consultar
+RN-005 y RN-054 en `business-rules.md`.
 
 ---
 
@@ -176,12 +173,8 @@ Socios y changas poseen reglas específicas que deberán consultarse en `busines
 
 Representa el orden utilizado para determinar a quién corresponde un turno.
 
-Existen listas independientes para:
-
-* socios;
-* changas.
-
-La posición de estas listas persiste entre pedidos.
+Existe una lista única de socios por seccional. Su punto de recorrido persiste
+entre pedidos (RN-011 a RN-014).
 
 ---
 
@@ -228,15 +221,15 @@ Un trabajador puede quedar ATRASADO cuando la rotación vuelve a alcanzar su tur
 
 Los atrasados disponibles tienen prioridad sobre la rotación ordinaria.
 
-Los atrasados se procesan utilizando FIFO.
-
-Socios y changas mantienen sus respectivas colas de atrasados.
+Los atrasados elegibles se priorizan por cantidad descendente de atrasos y,
+en empate, por `fecha_primer_atraso` ascendente (RN-103 y RN-104).
 
 ---
 
 ## 7.6 Sanción
 
-Las sanciones se expresan exclusivamente mediante cantidad de turnos.
+Las sanciones pueden expresarse en turnos pendientes o mediante quita de atrasos
+(RN-039 y RN-044); no se definen por días.
 
 Cuando corresponde consumir un turno de sanción, el trabajador no puede ser asignado y se descuenta un turno de la sanción pendiente.
 
@@ -246,7 +239,9 @@ Cuando corresponde consumir un turno de sanción, el trabajador no puede ser asi
 
 Un trabajador puede necesitar una habilitación específica para trabajar en determinada empresa.
 
-La falta de habilitación empresarial impide la asignación para ese pedido, pero no consume el turno del trabajador por esa causa.
+Todos están habilitados por defecto salvo inhabilitación registrada. Esta impide
+la asignación; durante la rotación puede generar un atraso si cumple las demás
+condiciones y no posee atrasos pendientes (RN-048 a RN-050).
 
 ---
 
@@ -358,8 +353,8 @@ determinar momento de procesamiento
    ↓
 consultar estado actual correspondiente
    ↓
-determinar SOCIOS / CHANGAS
-según EMPRESA + TAREA
+consultar la lista de SOCIOS
+y la tarea configurada de la empresa
    ↓
 procesar ATRASADOS
    ↓
@@ -582,9 +577,9 @@ Actualmente se encuentran trabajadas:
 * Fase 4 — Casos de uso.
 * Fase 5 — Modelo de dominio.
 * Fase 6 — Diseño de base de datos.
-* Fase 7 — Arquitectura.
+* Fase 7 — Arquitectura: base mínima documentada, EN CONSOLIDACIÓN.
 
-La siguiente fase será:
+La fase en proceso es:
 
 **Fase 8 — Diseño de API.**
 
@@ -593,26 +588,37 @@ El detalle de objetivos, entregables y estados de todas las fases se encuentra e
 
 ---
 
-# 20. Decisiones técnicas todavía no definidas
+# 20. Decisiones técnicas y pendientes
 
-Este documento no autoriza a asumir decisiones definitivas sobre:
+El usuario aprobó Node.js + Express y Vite + React en JavaScript, PostgreSQL con
+Prisma y monorepo simple con `backend/` y `frontend/`, cada uno con su package.json.
+Las carpetas de aplicación todavía no se crearon.
 
-* arquitectura;
-* lenguaje o framework de backend;
-* framework de frontend;
-* ORM;
-* autenticación técnica;
-* infraestructura;
-* hosting;
-* estructura de API;
-* estructura definitiva de carpetas del código;
-* estrategia concreta de procesos programados;
-* librerías.
+El acceso documentado en UC-TRABAJADOR-001 utiliza bcrypt y sesiones con cookies;
+JWT no fue aprobado. Infraestructura, hosting, librerías de jobs y pruebas,
+detalles de sesión y estrategia operativa requieren diseño posterior.
 
-PostgreSQL y el modelo físico de datos ya fueron definidos durante la Fase 6. Las
-decisiones de arquitectura se definieron en `docs/architecture.md`. Los contratos de
-API, pantallas, detalles de migraciones y decisiones de deployment deberán abordarse
-en las fases correspondientes.
+Decisiones de acceso posteriores: no bloquear por cantidad de intentos fallidos;
+sesión de una hora renovable con navegación e interacción del usuario, no con
+refrescos automáticos; trabajador puede ingresar por el nombre propio consignado
+en el registro o email con contraseña (homónimos pendientes). Nueva contraseña:
+mínimo 8 caracteres, mayúscula, minúscula, número y símbolo obligatorios.
+Recuperación por email queda para implementación futura. Consultar D-29, D-33 y D-34.
+
+Decisión posterior: guardar correo válido de Gmail del trabajador; ingreso con
+Gmail aplazado mediante «Continuar con Google» (autenticación Google aprobada,
+no implementada). Precisar sustitución del acceso por nombre/contraseña y efectos
+sobre contraseña temporal/cambio inicial (D-35/D-36). La validación de formato no
+verifica titularidad. El trabajador sigue siendo dado de alta por UATRE.
+
+[architecture.md](./architecture.md) define la arquitectura mínima: monolito
+modular, PostgreSQL local para desarrollo, proxy Vite `/api`, responsabilidades,
+estructura prevista y transición a migraciones Prisma. El usuario confirmó tener
+PostgreSQL instalado; su versión y conexión aún no se verificaron. No se creó código.
+
+Fase 7 está EN CONSOLIDACIÓN; la Fase 8 avanza con contratos provisionales cuando
+falten definiciones. Consultar [decisiones-pendientes.md](./decisiones-pendientes.md)
+y [api-design.md](./api-design.md).
 
 ---
 

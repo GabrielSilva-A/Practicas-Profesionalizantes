@@ -15,7 +15,19 @@
 
 ### Descripción
 
-Autenticación de trabajadores al sistema mediante email y contraseña. Detecta primer login y ejecuta cambio obligatorio de contraseña.
+Autenticación de trabajadores mediante nombre o email y contraseña (decisión
+aprobada). Detecta primer login y ejecuta cambio obligatorio de contraseña.
+El nombre de ingreso es el nombre propio consignado en el formulario de registro,
+no un alias único. UATRE mantiene la responsabilidad de registrar al trabajador.
+La resolución de homónimos y comparación del nombre están pendientes D-33 en
+`decisiones-pendientes.md`; el nombre personal no identifica por sí solo una cuenta única.
+
+**Decisión posterior pendiente de precisión:** se guardará un correo válido de
+Gmail del trabajador y el ingreso con Gmail se implementará más adelante.
+El usuario confirmó «Continuar con Google»: autenticación Google, no correo y
+contraseña local. Falta confirmar si sustituye acceso por nombre/contraseña
+(D-35), el efecto sobre el cambio inicial y vinculación al alta UATRE (D-36).
+El flujo local siguiente es provisional; no constituye integración implementada.
 
 ### Precondiciones:
 1. Trabajador registrado por UATRE (UC-UATRE-002)
@@ -27,12 +39,12 @@ Autenticación de trabajadores al sistema mediante email y contraseña. Detecta 
 
 1. Trabajador accede a pantalla login
 2. Sistema muestra formulario con campos:
-   - Email
+   - Nombre o email
    - Contraseña
    - Opción "Recordar email"
    - Botón "INICIAR SESIÓN"
 
-3. Trabajador ingresa email y contraseña
+3. Trabajador ingresa nombre o email y contraseña
 4. Sistema valida entrada
 5. Sistema consulta usuario en BD
 6. Sistema verifica contraseña con bcrypt
@@ -52,10 +64,10 @@ Autenticación de trabajadores al sistema mediante email y contraseña. Detecta 
 
 ### Flujos alternativos:
 
-- FA-1: Email no registrado → Mensaje genérico de error
-- FA-2: Contraseña incorrecta → Mensaje genérico + contador de intentos
+- FA-1: Identificador no registrado → Mensaje genérico de error
+- FA-2: Contraseña incorrecta → Mensaje genérico, sin bloqueo por cantidad de intentos
 - FA-3: Cuenta desactivada → "Tu cuenta ha sido desactivada"
-- FA-4: IP bloqueada → "Demasiados intentos. Intenta más tarde"
+- FA-4: Intentos fallidos repetidos → se permite volver a intentar, sin bloqueo por IP o cuenta basado en su cantidad
 - FA-5: Sistema en mantenimiento → "Sistema en mantenimiento"
 
 ### Postcondiciones:
@@ -83,11 +95,20 @@ Autenticación de trabajadores al sistema mediante email y contraseña. Detecta 
 ### Características de seguridad:
 
 - Mensaje genérico de error (previene enumeración)
-- Bloqueo después de 5 intentos fallidos
-- Sesiones TTL 1 hora
+- Sin bloqueo por intentos fallidos, independientemente de su cantidad (decisión aprobada)
+- Sesiones TTL 1 hora renovable con navegación e interacción del usuario.
+- Refrescos automáticos, incluido el polling del pizarrón, no renuevan la sesión.
+- La renovación requiere una sesión todavía válida; detección/comunicación de
+  actividad al servidor pendiente de diseño técnico (D-29).
 - Cookies HttpOnly + Secure + SameSite=Strict
 - Email recordado (NUNCA contraseña)
 - Primer login dispara UC-TRABAJADOR-008
+
+### Funcionalidad futura pendiente:
+
+- Recuperación de contraseña vía email, aprobada para implementación posterior.
+- Su flujo, mecanismo de verificación y servicio de envío aún no están diseñados
+  ni implementados (D-34). No se ofrece como funcionalidad disponible.
 
 ### Reglas de negocio asociadas:
 
@@ -108,6 +129,10 @@ Autenticación de trabajadores al sistema mediante email y contraseña. Detecta 
 ### Descripción
 
 Cambio OBLIGATORIO de contraseña temporal a permanente. Se ejecuta automáticamente en primer login después de UC-TRABAJADOR-001.
+
+**Revisión necesaria:** el acceso futuro «Continuar con Google» fue aprobado.
+La aplicabilidad de este cambio de contraseña local requiere decisión D-36;
+no se solicita ni se modifica la contraseña de la cuenta Google.
 
 ### Precondiciones:
 
@@ -137,7 +162,7 @@ Cambio OBLIGATORIO de contraseña temporal a permanente. Se ejecuta automáticam
    - Contiene mayúscula (A-Z)
    - Contiene minúscula (a-z)
    - Contiene número (0-9)
-   - Contiene símbolo (!@#$%^&*)
+    - Contiene al menos un símbolo (por ejemplo !, @, #, $, %, ^, & o *; la lista no constituye una restricción exclusiva)
    - Diferente de temporal
 
 10. Sistema ACTUALIZA:

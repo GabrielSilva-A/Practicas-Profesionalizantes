@@ -101,7 +101,7 @@ Antes de implementar, consultar ambos documentos.
 
 ## REQ-UATRE-013: Override puntual de asignación
 - UATRE reemplaza manualmente al trabajador designado dentro de un pedido
-- Aplica efectos de cancelación (RN-074) sobre el trabajador reemplazado: +1 turno atrasado (o devolución del atraso usado)
+- Aplica +1 turno de sanción al trabajador reemplazado, conforme a RN-083 y decisión aprobada por el usuario. No aplicar por analogía los efectos de cancelación del pedido (RN-074).
 - Sin auditoría específica del override (RN-128); el historial conserva únicamente el resultado final resumido del pedido (RN-165)
 - **UC asociado:** UC-UATRE-010 (Override puntual de asignación) ✅
 - **Nota:** requerimiento agregado en esta actualización para cubrir RN-126, que no tenía REQ ni UC asignado previamente

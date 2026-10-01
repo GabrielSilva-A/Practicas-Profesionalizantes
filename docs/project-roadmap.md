@@ -84,8 +84,8 @@ Una decisión posterior modificó aspectos importantes de una fase previamente c
 | 4    | Casos de uso                                | COMPLETADA                                     |
 | 5    | Modelo de dominio                           | COMPLETADA                                     |
 | 6    | Diseño de base de datos                     | COMPLETADA                                     |
-| 7    | Arquitectura                                | COMPLETADA                                     |
-| 8    | Diseño de API                               | PENDIENTE                                      |
+| 7    | Arquitectura                                | EN CONSOLIDACIÓN — arquitectura mínima documentada |
+| 8    | Diseño de API                               | EN PROCESO                                     |
 | 9    | Diseño de frontend                          | PENDIENTE                                      |
 | 10   | Desarrollo por iteraciones                  | PENDIENTE                                      |
 | 11   | Testing                                     | PENDIENTE                                      |
@@ -194,9 +194,10 @@ Puede quedar libre y ser utilizado posteriormente por otra persona.
 
 La posición de las listas debe mantenerse entre pedidos.
 
-### Listas independientes
+### Lista vigente
 
-Socios y changas poseen rotaciones independientes.
+RN-005 y RN-054 consolidaron una única lista de socios por seccional. Las
+referencias históricas a changas no son una especificación vigente.
 
 ### Asistencia basada en estados
 
@@ -208,7 +209,8 @@ Se registran condiciones sobre los integrantes de las listas originales.
 
 Un trabajador puede quedar atrasado cuando la rotación vuelve a alcanzar su turno mientras se encuentra comprometido con una designación anterior o trabajando.
 
-Los atrasados disponibles tienen prioridad y utilizan FIFO.
+Los atrasados elegibles tienen prioridad por cantidad descendente y fecha del
+primer atraso ascendente (RN-103 y RN-104). FIFO corresponde a pedidos habilitados.
 
 ### Anotado
 
@@ -225,7 +227,7 @@ ANOTADO impide temporalmente la asignación sin eliminar el atraso.
 
 ### Sanciones
 
-Las sanciones se expresan exclusivamente en cantidad de turnos.
+Las sanciones se expresan en turnos pendientes o quita de atrasos (RN-039).
 
 ### Bloqueo laboral
 
@@ -237,7 +239,7 @@ El trabajador puede indicar que terminó antes.
 
 Un trabajador puede estar habilitado para determinadas empresas y no para otras.
 
-La falta de habilitación empresarial no consume su turno.
+La inhabilitación impide designar y puede generar un atraso conforme a RN-049.
 
 ### Tareas
 
@@ -245,7 +247,7 @@ La combinación:
 
 `EMPRESA + TAREA`
 
-determina si el nombramiento correspondiente comienza por socios o changas.
+identifica el trabajo solicitado; no selecciona otra lista de origen (RN-054).
 
 ## Evolución durante la Fase 3
 
@@ -464,7 +466,7 @@ La base de datos deberá derivarse del modelo de dominio y los requerimientos.
 
 # 11. Fase 7 — Arquitectura
 
-**Estado:** COMPLETADA
+**Estado:** EN CONSOLIDACIÓN
 
 ## Objetivo
 
@@ -485,17 +487,22 @@ En esta fase podrán analizarse y justificarse decisiones relacionadas con:
 
 Las decisiones deberán justificarse mediante necesidades del sistema y no únicamente por preferencia tecnológica.
 
-## Entregable realizado
+## Entregable mínimo creado — 2026-10-01
 
-- [architecture.md](./architecture.md): arquitectura de monolito modular, separación
-  entre cliente, API y worker, decisiones tecnológicas, transacciones, seguridad,
-  procesos programados, operación y migraciones requeridas antes del desarrollo.
+- [architecture.md](./architecture.md): monolito modular, responsabilidades,
+  estructura prevista, PostgreSQL local, proxy de desarrollo, persistencia y
+  transacciones, sesión, procesos temporales y criterios del primer bloque técnico.
+
+Se subsana la ausencia detectada al iniciar Fase 8. No se considera comprobado
+el cierre anterior ni completada toda la arquitectura. Bibliotecas de sesiones/jobs,
+migraciones concretas, concurrencia y despliegue conservan pendientes documentados.
+No se crearon aplicaciones ni bases de datos en esta consolidación.
 
 ---
 
 # 12. Fase 8 — Diseño de API
 
-**Estado:** PENDIENTE
+**Estado:** EN PROCESO
 
 ## Objetivo
 
@@ -504,6 +511,19 @@ Definir las operaciones mediante las cuales se comunicarán las partes correspon
 ## Resultado esperado
 
 Especificación de las operaciones necesarias para soportar los casos de uso y requerimientos.
+
+## Avance inicial — 2026-10-01
+
+- [decisiones-pendientes.md](./decisiones-pendientes.md): decisiones aprobadas,
+  preguntas abiertas y su impacto sobre contratos.
+- [api-design.md](./api-design.md): convenciones y contratos iniciales de acceso
+  y administración, con restricciones provisionales identificadas.
+- [openapi.yaml](./openapi.yaml): contrato parcial inicial de sesión y consultas
+  de identidad/estado; no representa toda la API.
+
+Pendiente: cerrar decisiones que afecten contratos, completar operaciones de
+administración, asistencia, pedidos, designaciones, pizarrón e historial y
+ampliar/validar OpenAPI. No se implementó código de aplicación.
 
 ---
 
@@ -625,7 +645,10 @@ Formato:
 
 | Fecha     | Fase origen | Fase que detectó el cambio | Cambio | Documentos afectados |
 | --------- | ----------- | -------------------------- | ------ | -------------------- |
-| Pendiente | —           | —                          | —      | —                    |
+| 2026-10-01 | 2, 3, 4 | 8 | Registrar dudas y alinear decisión de sanción por reemplazo; actualizar síntesis de reglas vigentes. | decisiones-pendientes.md, PROJECT_GUIDE.md, requirements.md, business-rules.md, uc-uatre.md |
+| 2026-10-01 | 7 | 8 | Detectar ausencia de architecture.md; revisar estado declarado. | PROJECT_GUIDE.md, project-roadmap.md |
+| 2026-10-01 | 7 | 8 | Crear arquitectura mínima solicitada con PostgreSQL local; pasar Fase 7 a EN CONSOLIDACIÓN y actualizar referencias. | architecture.md, PROJECT_GUIDE.md, api-design.md, decisiones-pendientes.md, AGENTS.md |
+| 2026-10-01 | 2, 4 | 8 | Consolidar complejidad obligatoria de contraseña, nombre propio de ingreso y renovación con navegación/interacción; homónimos pendientes. | business-rules.md, uc-trabajador.md, decisiones-pendientes.md, api-design.md, openapi.yaml, PROJECT_GUIDE.md, AGENTS.md |
 
 Esto permitirá reconstruir por qué evolucionaron determinadas reglas durante el desarrollo.
 
@@ -633,15 +656,8 @@ Esto permitirá reconstruir por qué evolucionaron determinadas reglas durante e
 
 # 21. Próximo paso
 
-El proyecto ha completado el análisis correspondiente a la Fase 3.
-
-Antes de comenzar la Fase 4 deberán quedar consolidados:
-
-* `PROJECT_GUIDE.md`;
-* `project-roadmap.md`;
-* `business-rules.md`;
-* `requirements.md`.
-
-Una vez aprobados estos documentos podrá comenzar:
-
-**FASE 4 — CASOS DE USO.**
+Continuar **FASE 8 — DISEÑO DE API**: resolver dudas al abordar cada módulo,
+consolidar contratos y revisar trazabilidad. La arquitectura mínima está documentada
+y conserva pendientes. El siguiente bloque técnico propuesto es estandarizar y
+crear la base ejecutable dentro del alcance de desarrollo que se solicite;
+no considerar Fases 8/9 completadas por iniciar ese bloque.

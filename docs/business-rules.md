@@ -154,7 +154,7 @@ La responsabilidad de crear un nuevo trabajador corresponde a UATRE (personal de
    - Apellido (requerido)
    - Documento (requerido, único global)
    - Teléfono (opcional)
-   - Email de Gmail (requerido, activo)
+    - Email válido de Gmail (requerido, se guarda en USUARIOS.email). Validar formato no acredita titularidad ni existencia; el ingreso con Gmail se implementará después y su mecanismo requiere precisión (D-35).
    - Número de lista (UATRE selecciona de disponibles)
 
 2. **UATRE completa el formulario de registro** dentro del sistema.
@@ -1355,6 +1355,10 @@ Las estadísticas sobre el historial podrán incorporarse en una etapa posterior
 
 El encargado de UATRE podrá modificar manualmente qué trabajador quedó asignado dentro de un pedido.
 
+**Decisión aprobada:** el trabajador reemplazado recibe 1 turno de sanción,
+conforme a RN-083. Este reemplazo no aplica por analogía los efectos de cancelación
+del pedido de RN-074. La cancelación del pedido conserva su tratamiento separado.
+
 ### Caso de uso asociado:
 
 - UC-UATRE-010: Override puntual de asignación
@@ -1648,7 +1652,7 @@ Cuando un trabajador accede al sistema por primera vez con la contraseña tempor
 3. **Validación de nueva contraseña:**
    - Mínimo 8 caracteres
    - Debe ser diferente de la contraseña temporal
-   - Se recomienda: mayúscula + minúscula + número + símbolo
+    - Obligatoriamente al menos una mayúscula, una minúscula, un número y un símbolo (decisión aprobada por el usuario)
 
 4. **Flujo:**
    ```

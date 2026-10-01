@@ -1,0 +1,158 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "UATRE — contrato inicial parcial",
+    "version": "0.1.0",
+    "description": "Diseño de Fase 8, no implementación. JSON es sintaxis válida de YAML. Convenciones en api-design.md. Las extensiones x-decision-pendiente identifican decisiones abiertas. Protección CSRF de operaciones mutables pendiente de arquitectura."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "sessionCookie": [] }],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "iniciarSesion",
+        "summary": "Autenticar y crear sesión normal o restringida",
+        "description": "RN-150/169; UC-TRABAJADOR-001/008. No seleccionar rol desde el cliente. No implementado. Acceso futuro Continuar con Google aprobado; este login local sigue provisional hasta decidir sustitución/coexistencia y efectos sobre contraseña inicial (D-35/D-36). No describe el flujo Google.",
+        "security": [],
+        "x-decision-pendiente": ["D-29", "D-30", "D-32", "D-33", "D-35", "D-36"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object", "additionalProperties": false,
+            "required": ["identificador", "password"],
+            "properties": {
+              "identificador": { "type": "string", "minLength": 1, "description": "Nombre propio consignado al registrar al trabajador o email; homónimos y comparación pendientes D-33. Empresa/seccional usan email. No seleccionar arbitrariamente un homónimo." },
+              "password": { "type": "string", "minLength": 1, "writeOnly": true }
+            }
+          } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Identidad de sesión; primera_vez_login=true limita el acceso al cambio obligatorio, auth/me y logout.",
+            "headers": {
+              "Set-Cookie": { "description": "Cookie opaca uatre_session; HttpOnly, Secure, SameSite=Strict. TTL de una hora renovable con navegación/interacción del usuario, no con polling automático. Comunicación de actividad y persistencia pendientes D-29.", "schema": { "type": "string" } },
+              "Cache-Control": { "schema": { "type": "string", "const": "no-store" } }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidJson" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "consultarSesion",
+        "summary": "Consultar identidad de sesión normal o restringida",
+        "responses": {
+          "200": { "description": "Identidad sin datos sensibles", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "cerrarSesion",
+        "summary": "Invalidar sesión y eliminar cookie",
+        "description": "Idempotente también sin sesión. Mecanismo CSRF pendiente; no implementado.",
+        "security": [],
+        "responses": {
+          "204": { "description": "Sin cuerpo; cookie eliminada", "headers": { "Set-Cookie": { "description": "Expira la cookie uatre_session con mismo ámbito de creación", "schema": { "type": "string" } } } },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/me/estado": {
+      "get": {
+        "operationId": "consultarEstadoPersonal",
+        "summary": "Consultar condiciones del trabajador autenticado",
+        "description": "REQ-TRABAJADOR-001; UC-TRABAJADOR-007. Solo TRABAJADOR con cambio obligatorio completado; ID desde sesión.",
+        "x-decision-pendiente": ["D-02", "D-04", "D-32"],
+        "responses": {
+          "200": { "description": "Condiciones coexistentes y designación propia", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkerStateResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "uatre_session", "description": "Sesión opaca en servidor. Cookie propuesta; biblioteca no seleccionada." }
+    },
+    "schemas": {
+      "SessionResponse": {
+        "type": "object", "additionalProperties": false, "required": ["data"],
+        "properties": { "data": {
+          "type": "object", "additionalProperties": false,
+          "required": ["usuario_id", "tipo", "primera_vez_login"],
+          "properties": {
+            "usuario_id": { "type": "integer", "minimum": 1 },
+            "tipo": { "type": "string", "enum": ["SECCIONAL", "EMPRESA", "TRABAJADOR"] },
+            "primera_vez_login": { "type": "boolean" }
+          }
+        } }
+      },
+      "WorkerStateResponse": {
+        "type": "object", "additionalProperties": false, "required": ["data"],
+        "properties": { "data": {
+          "type": "object", "additionalProperties": false,
+          "required": ["numero_lista", "presente_hoy", "presente_ayer", "anotado", "atrasos_pendientes", "turnos_sancion_pendientes", "designacion_vigente"],
+          "properties": {
+            "numero_lista": { "type": ["integer", "null"], "minimum": 1 },
+            "presente_hoy": { "type": "boolean", "description": "Significado temporal pendiente D-02/D-04" },
+            "presente_ayer": { "type": "boolean" },
+            "anotado": { "type": "boolean" },
+            "atrasos_pendientes": { "type": "integer", "minimum": 0 },
+            "turnos_sancion_pendientes": { "type": "integer", "minimum": 0 },
+            "designacion_vigente": { "anyOf": [{ "$ref": "#/components/schemas/ActiveAssignment" }, { "type": "null" }] }
+          }
+        } }
+      },
+      "ActiveAssignment": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "pedido_id", "empresa", "tarea", "establecimiento", "horario_inicio", "estado"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "pedido_id": { "type": "integer", "minimum": 1 },
+          "empresa": { "type": "string" },
+          "tarea": { "type": "string" },
+          "establecimiento": { "type": ["string", "null"] },
+          "horario_inicio": { "type": "string", "format": "date-time" },
+          "estado": { "type": "string", "enum": ["DESIGNADO", "TRABAJANDO"] }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object", "additionalProperties": false, "required": ["error"],
+        "properties": { "error": {
+          "type": "object", "additionalProperties": false, "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string" }, "message": { "type": "string" },
+            "details": { "type": "array", "items": {
+              "type": "object", "additionalProperties": false, "required": ["field", "message"],
+              "properties": { "field": { "type": "string" }, "message": { "type": "string" } }
+            } }
+          }
+        } }
+      }
+    },
+    "responses": {
+      "InvalidJson": { "description": "JSON mal formado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Unauthorized": { "description": "CREDENCIALES_INVALIDAS en login o SESION_INVALIDA en consultas", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Forbidden": { "description": "CUENTA_INACTIVA, ACTOR_NO_AUTORIZADO, CAMBIO_PASSWORD_REQUERIDO o protección CSRF", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "ValidationError": { "description": "VALIDACION", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "InternalError": { "description": "ERROR_INTERNO sin detalles sensibles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Unavailable": { "description": "SERVICIO_NO_DISPONIBLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+    }
+  }
+}

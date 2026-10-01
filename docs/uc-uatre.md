@@ -23,7 +23,7 @@ Un trabajador no se registra a sí mismo en el sistema. La responsabilidad de cr
    - Apellido (requerido)
    - Documento (requerido, único global)
    - Teléfono (opcional)
-   - Email de Gmail (requerido, activo)
+   - Email válido de Gmail (requerido, se guarda en USUARIOS.email). No implica titularidad verificada ni integración Google; ingreso futuro pendiente de precisión D-35.
    - Número de lista (UATRE selecciona de disponibles)
 
 2. **UATRE completa el formulario de registro** dentro del sistema
@@ -813,7 +813,7 @@ UATRE puede modificar manualmente qué trabajador quedó designado dentro de un 
 7. Sistema ejecuta el reemplazo:
    - La designación original pasa a `estado = CANCELADO`
    - Se crea una nueva fila en DESIGNACIONES para el trabajador sustituto, con `estado = DESIGNADO`
-   - Aplica los mismos efectos que una cancelación de designación (RN-074): el trabajador reemplazado recibe **1 turno atrasado** y, si había usado previamente un atraso para obtener esa designación, ese turno atrasado le es devuelto
+   - Aplica **1 turno de sanción** al trabajador reemplazado (RN-083 y RN-126, decisión aprobada); no aplica por analogía los efectos de cancelación del pedido (RN-074)
 8. Sistema confirma el reemplazo
 
 ### Flujos alternativos:
@@ -827,7 +827,7 @@ UATRE puede modificar manualmente qué trabajador quedó designado dentro de un 
 
 **Si exitoso:**
 - Designación original: `estado = CANCELADO`
-- Trabajador reemplazado: recibe 1 turno atrasado (o recupera el que había usado, según corresponda, RN-074)
+- Trabajador reemplazado: recibe 1 turno de sanción (RN-083 y RN-126)
 - Nueva designación creada para el trabajador sustituto: `estado = DESIGNADO`
 - El historial del pedido conserva únicamente el resultado final resumido; no registra la identidad del trabajador efectivamente designado ni las designaciones individuales (RN-165)
 - No se genera un evento de auditoría específico para la acción de override en sí (RN-128)
@@ -839,13 +839,13 @@ UATRE puede modificar manualmente qué trabajador quedó designado dentro de un 
 
 - RN-050: Habilitación obligatoria en toda designación
 - RN-073: Pedido iniciado (límite temporal, aplicado por analogía al override)
-- RN-074: Cancelación con designados (efectos sobre atrasos)
+- RN-083: Reemplazo del designado con un turno de sanción (decisión aprobada)
 - RN-126: Override puntual de asignación
 - RN-128: Sin auditoría del override
 
 ### Requerimientos asociados:
 
-- Ninguno definido aún en `requirements.md` — se recomienda incorporar como nuevo requerimiento (ver nota abajo).
+- REQ-UATRE-013: Override puntual de asignación.
 
 ### Casos de uso asociados:
 
