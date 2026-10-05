@@ -133,6 +133,7 @@ CREATE TABLE usuarios (
     empresa_id INTEGER,
     trabajador_id INTEGER,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
+    primera_vez_login BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_tipo_usuario CHECK (tipo IN ('SECCIONAL', 'EMPRESA', 'TRABAJADOR')),
     CONSTRAINT chk_coherencia_tipo CHECK (
@@ -170,6 +171,7 @@ CREATE TABLE asistencia (
     trabajador_id INTEGER NOT NULL,
     fecha DATE NOT NULL,
     presente BOOLEAN NOT NULL DEFAULT FALSE,
+    verificado BOOLEAN NOT NULL DEFAULT FALSE,
     cerrado BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT uq_asistencia_trabajador_fecha UNIQUE (trabajador_id, fecha)
 );
@@ -649,21 +651,6 @@ CREATE TRIGGER trg_sync_presente_flags
 AFTER INSERT OR UPDATE OF cerrado ON asistencia
 FOR EACH ROW
 EXECUTE FUNCTION fn_sync_presente_flags();
-
-
-CREATE OR REPLACE FUNCTION fn_reset_presente_hoy()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE trabajadores SET presente_hoy = FALSE WHERE id = NEW.trabajador_id;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_reset_presente_hoy ON asistencia;
-CREATE TRIGGER trg_reset_presente_hoy
-BEFORE INSERT ON asistencia
-FOR EACH ROW
-EXECUTE FUNCTION fn_reset_presente_hoy();
 
 
 CREATE OR REPLACE FUNCTION fn_crear_atraso_inicial()

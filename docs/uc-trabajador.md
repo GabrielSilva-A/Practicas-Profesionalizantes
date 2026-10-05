@@ -15,19 +15,18 @@
 
 ### Descripción
 
-Autenticación de trabajadores mediante nombre o email y contraseña (decisión
-aprobada). Detecta primer login y ejecuta cambio obligatorio de contraseña.
-El nombre de ingreso es el nombre propio consignado en el formulario de registro,
-no un alias único. UATRE mantiene la responsabilidad de registrar al trabajador.
-La resolución de homónimos y comparación del nombre están pendientes D-33 en
-`decisiones-pendientes.md`; el nombre personal no identifica por sí solo una cuenta única.
+Autenticación de trabajadores. **D-33 (consolidada):** el identificador es
+exclusivamente el email; no se admite el nombre propio para login. Detecta
+primer login y ejecuta el cambio obligatorio de contraseña cuando corresponda.
+UATRE mantiene la responsabilidad de registrar al trabajador (alta por UATRE,
+no autorregistro).
 
-**Decisión posterior pendiente de precisión:** se guardará un correo válido de
-Gmail del trabajador y el ingreso con Gmail se implementará más adelante.
-El usuario confirmó «Continuar con Google»: autenticación Google, no correo y
-contraseña local. Falta confirmar si sustituye acceso por nombre/contraseña
-(D-35), el efecto sobre el cambio inicial y vinculación al alta UATRE (D-36).
-El flujo local siguiente es provisional; no constituye integración implementada.
+**D-35 (consolidada):** cuando se implemente, «Continuar con Google» será el
+único acceso de trabajadores; hasta entonces **no se habilita login local de
+trabajadores**. El flujo local descrito a continuación es provisional y no
+constituye integración implementada. Queda pendiente en D-36 el efecto sobre el
+cambio inicial de contraseña y la vinculación de la identidad Google con el
+alta realizada por UATRE.
 
 ### Precondiciones:
 1. Trabajador registrado por UATRE (UC-UATRE-002)
@@ -39,12 +38,12 @@ El flujo local siguiente es provisional; no constituye integración implementada
 
 1. Trabajador accede a pantalla login
 2. Sistema muestra formulario con campos:
-   - Nombre o email
+   - Email (D-33)
    - Contraseña
    - Opción "Recordar email"
    - Botón "INICIAR SESIÓN"
 
-3. Trabajador ingresa nombre o email y contraseña
+3. Trabajador ingresa email y contraseña
 4. Sistema valida entrada
 5. Sistema consulta usuario en BD
 6. Sistema verifica contraseña con bcrypt
@@ -59,7 +58,6 @@ El flujo local siguiente es provisional; no constituye integración implementada
 - Sistema crea sesión segura
 - Guarda cookie (HttpOnly, Secure, SameSite=Strict)
 - Opcionalmente recuerda email
-- Registra login en auditoría
 - Redirige a Panel Principal
 
 ### Flujos alternativos:
@@ -77,25 +75,23 @@ El flujo local siguiente es provisional; no constituye integración implementada
 - UC-TRABAJADOR-008 ejecutado completamente
 - USUARIOS.primera_vez_login: FALSE
 - USUARIOS.password_hash: actualizado
-- Auditoría: LOGIN registrado
 - Trabajador ve Panel Principal
 
 **Si exitoso (no primer login):**
 - Sesión creada con first_login=FALSE
 - Cookie establecida
 - Email recordado (si autorizó)
-- Auditoría: LOGIN registrado
 - Trabajador ve Panel Principal
 
 **Si falla:**
 - Sesión NO creada
-- Auditoría: LOGIN FALLIDO registrado
 - Trabajador permanece en login
 
 ### Características de seguridad:
 
 - Mensaje genérico de error (previene enumeración)
 - Sin bloqueo por intentos fallidos, independientemente de su cantidad (decisión aprobada)
+- Sin auditoría de login en esta etapa (D-30 consolidada)
 - Sesiones TTL 1 hora renovable con navegación e interacción del usuario.
 - Refrescos automáticos, incluido el polling del pizarrón, no renuevan la sesión.
 - La renovación requiere una sesión todavía válida; detección/comunicación de
@@ -201,7 +197,8 @@ no se solicita ni se modifica la contraseña de la cuenta Google.
 ### Características:
 
 - OBLIGATORIO: no se puede saltar
-- 5 validaciones de contraseña
+- Validaciones de contraseña (RN-169, D-21): mínimo 8 caracteres, distinta de
+  la temporal, y con mayúscula, minúscula, número y símbolo
 - Bloquea acceso hasta completar
 - Mostrar checklist de requisitos
 - Marcar requisitos en tiempo real
@@ -278,6 +275,8 @@ Trabajador accede al pizarrón seccional que muestra estado operativo en tiempo 
 
 - Pizarrón UNIFICADO (igual para UATRE y TRABAJADOR)
 - Las consultas sobre asistencia y disponibilidades quedan estáticas después de las 07:40
+  **⚠️ D-15 (PENDIENTE DE DISEÑO):** confirmar congelar vs. mantener dinámico
+  después del cierre; verificar `decisiones-pendientes.md`.
 - Los pedidos ingresados después de las 07:40 deben mostrarse en el pizarrón
 - Si un pedido se asigna por orden de asignación inmediata, debe designarse y mostrar los trabajadores designados tanto a UATRE como a los trabajadores en el pizarrón.
 - Información compartida (no confidencial)
@@ -295,6 +294,9 @@ Trabajador accede al pizarrón seccional que muestra estado operativo en tiempo 
 ### Flujo automático del sistema asociado (sin actor humano directo):
 
 - REQ-SISTEMA-003: Renovación pizarrón 00:00 — los pedidos completados salen del pizarrón y los pedidos sin cubrir se transfieren al nuevo día.
+  **⚠️ D-09 (PENDIENTE DE DISEÑO):** los pedidos vencidos se cierran como
+  NO_CUBIERTO; verificar `decisiones-pendientes.md` antes de implementar la
+  transferencia.
 
 ---
 ---

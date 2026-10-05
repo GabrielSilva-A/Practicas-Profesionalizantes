@@ -2,7 +2,9 @@
 
 # Sistema Web de Gestión y Asignación de Personal Eventual para UATRE
 
-**Propósito:** Visualizar la estructura de 15 tablas y sus relaciones.
+**Propósito:** Visualizar la estructura de las 15 tablas de `BD/bd_uatre.sql`
+y sus relaciones. Las migraciones de Prisma añaden además `sesiones` (A-17),
+incluida abajo.
 
 ---
 
@@ -38,6 +40,8 @@ erDiagram
     PEDIDOS ||--o{ PEDIDO_HISTORIAL : genera
     
     LISTA_ROTACION ||--o{ TRABAJADORES : "asigna a"
+
+    USUARIOS ||--o{ SESIONES : "abre"
 ```
 
 ---
@@ -64,6 +68,9 @@ erDiagram
 - `COLA_PEDIDOS` — Pedidos en espera
 - `DESIGNACIONES` — Asignaciones de trabajadores
 - `PEDIDO_HISTORIAL` — Histórico diario
+
+### **Tablas añadidas por migraciones Prisma (no en `bd_uatre.sql`)**
+- `SESIONES` — Sesiones opacas con `token_hash` (SHA-256), FK a `USUARIOS`, expiración (A-17)
 
 ---
 
@@ -143,7 +150,7 @@ fn_ejecutar_motor(pedido_id)
 Evalúa TRABAJADORES de LISTA_ROTACION
     ├─ Fase 1: ATRASADOS elegibles
     ├─ Fase 2: ROTACION ordinaria
-    └─ Fase 3: COBERTURA excepcional
+    └─ Cobertura excepcional: MANUAL (D-06, no la ejecuta el motor)
     ↓
 INSERT DESIGNACIONES
     ↓ [Trigger: trg_descontar_atraso_al_designar]
@@ -158,4 +165,4 @@ INSERT PEDIDO_HISTORIAL [cierre de jornada]
 
 **Versión:** 1.0  
 **Fecha:** 2026-09-22  
-**Referencias:** RN-001 a RN-165, base_datos.md, database-sql.md
+**Referencias:** RN-001 a RN-165, base_datos.md, BD/bd_uatre.sql

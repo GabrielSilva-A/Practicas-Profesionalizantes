@@ -45,6 +45,10 @@ El sistema permite:
 | `DESIGNACIONES` | Asignación de trabajadores a pedidos |
 | `PEDIDO_HISTORIAL` | Foto del pedido al cierre de jornada |
 
+> **Nota:** las migraciones de Prisma añaden una decimocuarta tabla,
+> `sesiones` (sesiones opacas por token, A-17), que no forma parte del DDL de
+> `BD/bd_uatre.sql`. El esquema vigente en `uatre_dev` tiene 16 tablas.
+
 ### 7 vistas del motor
 
 | Vista | Propósito |
@@ -62,7 +66,6 @@ El sistema permite:
 | Trigger | Cuándo se dispara | Qué hace |
 |---------|-------------------|----------|
 | `trg_sync_presente_flags` | Al cerrar asistencia | Copia `presente_hoy` → `presente_ayer` y actualiza `presente_hoy` |
-| `trg_reset_presente_hoy` | Al crear asistencia | Resetea `presente_hoy = FALSE` |
 | `trg_crear_atraso_inicial` | Al insertar trabajador | Crea registro en `atrasos` con cantidad 0 |
 | `trg_gestionar_fecha_primer_atraso` | Al actualizar atrasos | Setea/resetea `fecha_primer_atraso` |
 | `trg_descontar_atraso_al_designar` | Al insertar designación | Descuenta 1 atraso si tenía |
@@ -70,8 +73,12 @@ El sistema permite:
 | `trg_paso_a_trabajando` | Al cambiar a TRABAJANDO | Calcula `horario_fin = horario_inicio + 12h` |
 | `trg_liberar_designacion` | Al cambiar a FINALIZADO | Marca `horario_fin = NOW()` |
 | `trg_descuento_atraso_ausencia` | Al cerrar asistencia | Descuenta 1 atraso si AUSENTE + atrasos > 0 |
+| `trg_decidir_procesamiento_pedido` | Al insertar pedido | Decide cola vs inmediato (RN-063) |
 
-### 3 funciones del motor
+> Nota (A-28): el antiguo `trg_reset_presente_hoy` fue eliminado; los flags no
+> se resetean al abrir la asistencia y se sincronizan solo al cierre (D-02).
+
+### 11 funciones (3 del motor + 8 auxiliares de triggers)
 
 | Función | Propósito |
 |---------|-----------|
@@ -79,7 +86,13 @@ El sistema permite:
 | `fn_ejecutar_motor(pedido_id)` | Ejecuta la designación automática completa |
 | `fn_procesar_cola_pedidos(momento)` | Procesa pedidos pendientes en orden FIFO al alcanzar su momento programado |
 
-### 38 índices optimizados
+Las 8 funciones restantes (`fn_sync_presente_flags`, `fn_crear_atraso_inicial`,
+`fn_gestionar_fecha_primer_atraso`, `fn_descontar_atraso_al_designar`,
+`fn_gestionar_sancion_al_llegar_a_cero`, `fn_paso_a_trabajando`,
+`fn_liberar_designacion`, `fn_descuento_atraso_ausencia`) son auxiliares
+invocados por los triggers.
+
+### 42 índices optimizados
 
 Los índices están diseñados para las consultas más frecuentes del motor. Se priorizan **índices parciales** (con `WHERE`) para reducir tamaño y acelerar búsquedas.
 
@@ -203,6 +216,7 @@ CREATE TABLE usuarios (
     empresa_id INTEGER,
     trabajador_id INTEGER,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
+    primera_vez_login BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_tipo_usuario CHECK (tipo IN ('SECCIONAL', 'EMPRESA', 'TRABAJADOR')),
     CONSTRAINT chk_coherencia_tipo CHECK (
@@ -218,6 +232,9 @@ CREATE TABLE usuarios (
 - `tipo = 'EMPRESA'` → solo `empresa_id` tiene valor.
 - `tipo = 'TRABAJADOR'` → solo `trabajador_id` tiene valor.
 - El CHECK garantiza coherencia.
+- `primera_vez_login = TRUE` obliga a cambiar la contraseña en el primer
+  acceso (RN-169; A-06/C-06). Existe en `BD/bd_uatre.sql` y en las migraciones
+  de Prisma; aplicable a TRABAJADOR y a EMPRESA creada manualmente.
 
 **Cardinalidad:** RN-149 exige un único usuario por seccional, garantizado mediante un índice único parcial. Las cuentas de empresa y trabajador conservan la extensibilidad prevista por RN-150.
 
@@ -255,14 +272,20 @@ CREATE TABLE asistencia (
     trabajador_id INTEGER NOT NULL,
     fecha DATE NOT NULL,
     presente BOOLEAN NOT NULL DEFAULT FALSE,
+    verificado BOOLEAN NOT NULL DEFAULT FALSE,
     cerrado BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT uq_asistencia_trabajador_fecha UNIQUE (trabajador_id, fecha)
 );
 ```
 
+**Campos clave:**
+- `verificado`: distingue un registro aún pendiente de una ausencia
+  confirmada; el cierre exige que todos los registros de la jornada estén
+  verificados (D-01/A-28, RN-166).
+
 **Ciclo:**
-1. Se crea el registro del día (`cerrado = FALSE`) → trigger 2 resetea `presente_hoy`.
-2. UATRE marca PRESENTE/AUSENTE.
+1. Se crea el registro del día (`cerrado = FALSE`); los flags no se resetean al abrir (D-02).
+2. UATRE marca PRESENTE/AUSENTE y verifica registros (`verificado = TRUE`).
 3. UATRE cierra la asistencia (`cerrado = TRUE`) → trigger 1 sincroniza flags.
 
 ---
@@ -511,30 +534,7 @@ EXECUTE FUNCTION fn_sync_presente_flags();
 
 ---
 
-### Trigger 2: `trg_reset_presente_hoy`
-
-**Cuándo:** al crear asistencia nueva.
-
-**Qué hace:** resetea `presente_hoy = FALSE`.
-
-```sql
-CREATE OR REPLACE FUNCTION fn_reset_presente_hoy()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE trabajadores SET presente_hoy = FALSE WHERE id = NEW.trabajador_id;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_reset_presente_hoy
-BEFORE INSERT ON asistencia
-FOR EACH ROW
-EXECUTE FUNCTION fn_reset_presente_hoy();
-```
-
----
-
-### Trigger 3: `trg_crear_atraso_inicial`
+### Trigger 2: `trg_crear_atraso_inicial`
 
 **Cuándo:** al insertar un trabajador.
 
@@ -559,7 +559,7 @@ EXECUTE FUNCTION fn_crear_atraso_inicial();
 
 ---
 
-### Trigger 4: `trg_gestionar_fecha_primer_atraso`
+### Trigger 3: `trg_gestionar_fecha_primer_atraso`
 
 **Cuándo:** al actualizar `atrasos.cantidad`.
 
@@ -589,7 +589,7 @@ EXECUTE FUNCTION fn_gestionar_fecha_primer_atraso();
 
 ---
 
-### Trigger 5: `trg_descontar_atraso_al_designar`
+### Trigger 4: `trg_descontar_atraso_al_designar`
 
 **Cuándo:** al insertar una designación.
 
@@ -614,7 +614,7 @@ EXECUTE FUNCTION fn_descontar_atraso_al_designar();
 
 ---
 
-### Trigger 6: `trg_gestionar_sancion_al_llegar_a_cero`
+### Trigger 5: `trg_gestionar_sancion_al_llegar_a_cero`
 
 **Cuándo:** al actualizar sanciones.
 
@@ -639,7 +639,7 @@ EXECUTE FUNCTION fn_gestionar_sancion_al_llegar_a_cero();
 
 ---
 
-### Trigger 7: `trg_paso_a_trabajando`
+### Trigger 6: `trg_paso_a_trabajando`
 
 **Cuándo:** al cambiar `designaciones.estado` a `TRABAJANDO`.
 
@@ -664,7 +664,7 @@ EXECUTE FUNCTION fn_paso_a_trabajando();
 
 ---
 
-### Trigger 8: `trg_liberar_designacion`
+### Trigger 7: `trg_liberar_designacion`
 
 **Cuándo:** al cambiar `designaciones.estado` a `FINALIZADO`.
 
@@ -689,13 +689,59 @@ EXECUTE FUNCTION fn_liberar_designacion();
 
 ---
 
+### Trigger 8: `trg_descuento_atraso_ausencia`
+
+**Cuándo:** al cerrar asistencia (`AFTER INSERT OR UPDATE OF cerrado ON asistencia`).
+
+**Qué hace:** si el trabajador está AUSENTE al cierre, descuenta 1 atraso
+(máximo 1 por jornada).
+
+```sql
+CREATE OR REPLACE FUNCTION fn_descuento_atraso_ausencia()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.cerrado = TRUE AND (OLD.cerrado IS NULL OR OLD.cerrado = FALSE) THEN
+        IF NEW.presente = FALSE THEN
+            UPDATE atrasos
+            SET cantidad = GREATEST(cantidad - 1, 0)
+            WHERE trabajador_id = NEW.trabajador_id AND cantidad > 0;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_descuento_atraso_ausencia
+AFTER INSERT OR UPDATE OF cerrado ON asistencia
+FOR EACH ROW
+EXECUTE FUNCTION fn_descuento_atraso_ausencia();
+```
+
+---
+
+### Trigger 9: `trg_decidir_procesamiento_pedido`
+
+**Cuándo:** al insertar un pedido (`AFTER INSERT ON pedidos`).
+
+**Qué hace:** aplica el árbol de decisión RN-063 (cola o inmediato) llamando a
+`fn_decidir_procesamiento_pedido()`.
+
+```sql
+CREATE TRIGGER trg_decidir_procesamiento_pedido
+AFTER INSERT ON pedidos
+FOR EACH ROW
+EXECUTE FUNCTION fn_decidir_procesamiento_pedido();
+```
+
+---
+
 ## 🎯 Funciones del motor
 
 ### `fn_decidir_procesamiento_pedido()`
 
 **Propósito:** trigger que decide si un pedido va a cola o se procesa inmediatamente.
 
-**Lógica (RN-063, RN-064, RN-065):**
+**Lógica (RN-063):**
 
 1. Si `fecha_pedido = HOY`:
    - Si ya pasó 07:40 → procesar inmediato.
@@ -703,6 +749,11 @@ EXECUTE FUNCTION fn_liberar_designacion();
    - Si horario >= 07:40 → enviar a cola.
 2. Si `fecha_pedido = MAÑANA` y `horario < 07:40` → procesar inmediato: el ingreso es anterior a la próxima actualización de su jornada.
 3. Para cualquier otro `fecha_pedido > HOY` → enviar a cola.
+
+> ⚠️ **D-03 (consolidada):** tras 07:40, los pedidos deben esperar el cierre
+> manual de asistencia. El SQL actual **no verifica si la asistencia del día
+> está cerrada** (asume cierre a las 07:40). Refactorizar antes de usar;
+> ver `uatre-consolidation`.
 
 **Acción:**
 - **Cola:** insert en `cola_pedidos`.
@@ -718,11 +769,14 @@ EXECUTE FUNCTION fn_liberar_designacion();
 
 1. **Atrasados:** consulta `v_atrasados_elegibles`, excluye inhabilitados y ya designados, ordena por cantidad DESC y fecha ASC.
 2. **Rotación ordinaria:** recorre la lista desde `punto_rotacion`, evaluando cada número.
-3. **Cobertura excepcional:**
-   - Etapa 1: presentes hoy, ausentes ayer.
-   - Etapa 2: sancionados presentes hoy (sin descontar sanción).
-   - Etapa 3: ausentes hoy (agrega 1 sanción).
-4. **Cierre:** actualiza el pedido a `CUBIERTO` o `NO_CUBIERTO`.
+3. **Cierre:** actualiza el pedido a `CUBIERTO` o `NO_CUBIERTO`.
+
+> ⚠️ **D-06 (consolidada):** la cobertura excepcional es **manual**: si la
+> rotación ordinaria no cubre el pedido, el motor se detiene y UATRE autoriza
+> cada etapa (1: presentes hoy/ausentes ayer; 2: sancionados presentes;
+> 3: ausentes). El SQL actual aún ejecuta las 3 etapas automáticamente —
+> **bloqueador pendiente**: refactorizar `fn_ejecutar_motor` antes de usarlo
+> (ver `uatre-consolidation`).
 
 **Uso:**
 ```sql
@@ -969,7 +1023,7 @@ El flujo principal es:
 3. Las empresas crean pedidos.
 4. El sistema decide cola o inmediato.
 5. El motor designa trabajadores con prioridades.
-6. Se actualiza el pedido y se notifica.
+6. Se actualiza el pedido y el resultado queda visible en las vistas (D-26: sin notificaciones en esta etapa).
 
 ---
 
@@ -979,4 +1033,4 @@ El flujo principal es:
 **Versión:** 3.0  
 **Fecha de validación:** 2026-09-22  
 **Última actualización:** 2026-09-17  
-**Nota:** El SQL DDL completo se encuentra en `database-sql.md`
+**Nota:** El SQL DDL completo se encuentra en `../BD/bd_uatre.sql`

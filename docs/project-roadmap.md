@@ -137,7 +137,7 @@ Solicita personal eventual para realizar una determinada tarea.
 
 ### Trabajador
 
-Persona que puede participar del proceso de nombramiento como socio o changa.
+Persona que puede participar del proceso de nombramiento como socio.
 
 ## Resultado
 
@@ -171,7 +171,7 @@ Se definieron reglas relacionadas con:
 * anotados;
 * liberación de anotados;
 * atrasados;
-* FIFO de atrasados;
+* orden de atrasados (cantidad DESC, fecha del primer atraso ASC, RN-103/RN-104);
 * sanciones;
 * habilitaciones;
 * pedidos;
@@ -289,8 +289,7 @@ Se identificaron requerimientos correspondientes a:
 * empresas;
 * establecimientos;
 * trabajadores;
-* socios;
-* changas;
+* socios (la categoría «changa» del relevamiento se consolidó como socio, RN-005);
 * listas;
 * asistencia;
 * estados;
@@ -456,11 +455,11 @@ La base de datos deberá derivarse del modelo de dominio y los requerimientos.
 
 ## Entregables realizados
 
-- [database-sql.md](./database-sql.md): DDL PostgreSQL consolidado de 15 tablas, integridad, vistas, triggers, funciones e índices.
+- [../BD/bd_uatre.sql](../BD/bd_uatre.sql): DDL PostgreSQL consolidado de 15 tablas, integridad, vistas, triggers, funciones e índices (fuente única del esquema; `docs/database-sql.md` fue eliminado el 2026-10-01 por duplicarse byte a byte con este archivo).
 - [base_datos.md](./base_datos.md): documentación técnica del esquema y sus automatismos.
 - [diagrama-ER.md](./diagrama-ER.md): relaciones y cardinalidades del modelo físico.
 - [../BD/README.md](../BD/README.md): instrucciones de ejecución y validación de los scripts ejecutables.
-- [../BD/bd_uatre.sql](../BD/bd_uatre.sql) y [../BD/bd_uatre_test.sql](../BD/bd_uatre_test.sql): DDL ejecutable y fixture de demostración.
+- [../BD/bd_uatre_test.sql](../BD/bd_uatre_test.sql): fixture de demostración y verificaciones.
 
 ---
 
@@ -496,7 +495,10 @@ Las decisiones deberán justificarse mediante necesidades del sistema y no únic
 Se subsana la ausencia detectada al iniciar Fase 8. No se considera comprobado
 el cierre anterior ni completada toda la arquitectura. Bibliotecas de sesiones/jobs,
 migraciones concretas, concurrencia y despliegue conservan pendientes documentados.
-No se crearon aplicaciones ni bases de datos en esta consolidación.
+El scaffolding técnico posterior ya creó `backend/` y `frontend/`: Express,
+Prisma, Vite y React; el detalle de su alcance se mantiene en
+`architecture.md`. La arquitectura continúa EN CONSOLIDACIÓN porque persisten
+pendientes de sesiones, concurrencia, jobs, persistencia y despliegue.
 
 ---
 
@@ -520,10 +522,20 @@ Especificación de las operaciones necesarias para soportar los casos de uso y r
   y administración, con restricciones provisionales identificadas.
 - [openapi.yaml](./openapi.yaml): contrato parcial inicial de sesión y consultas
   de identidad/estado; no representa toda la API.
+- Implementación inicial: healthchecks, registro público de seccionales y
+  empresas, login/logout y consulta de sesión para cuentas EMPRESA y SECCIONAL.
+  Las demás rutas descritas en el contrato son futuras o provisionales hasta que
+  exista su implementación y se cierren sus decisiones dependientes.
+- Administración autenticada: contratos de perfil de seccional, consulta y
+  actividad de empresas, y administración de trabajadores trazados en
+  `api-design.md` y `openapi.yaml`. A-23 consolida las credenciales de alta
+  manual empresarial; el cambio obligatorio de contraseña para EMPRESA requiere
+  migración y rutas futuras.
 
 Pendiente: cerrar decisiones que afecten contratos, completar operaciones de
 administración, asistencia, pedidos, designaciones, pizarrón e historial y
-ampliar/validar OpenAPI. No se implementó código de aplicación.
+ampliar/validar OpenAPI. La implementación inicial no acredita el cierre de Fase 8
+ni habilita los módulos de negocio aún pendientes.
 
 ---
 
@@ -649,6 +661,12 @@ Formato:
 | 2026-10-01 | 7 | 8 | Detectar ausencia de architecture.md; revisar estado declarado. | PROJECT_GUIDE.md, project-roadmap.md |
 | 2026-10-01 | 7 | 8 | Crear arquitectura mínima solicitada con PostgreSQL local; pasar Fase 7 a EN CONSOLIDACIÓN y actualizar referencias. | architecture.md, PROJECT_GUIDE.md, api-design.md, decisiones-pendientes.md, AGENTS.md |
 | 2026-10-01 | 2, 4 | 8 | Consolidar complejidad obligatoria de contraseña, nombre propio de ingreso y renovación con navegación/interacción; homónimos pendientes. | business-rules.md, uc-trabajador.md, decisiones-pendientes.md, api-design.md, openapi.yaml, PROJECT_GUIDE.md, AGENTS.md |
+| 2026-10-01 | 7, 8 | 8 | Alinear el estado de arquitectura y API con el scaffolding técnico y las rutas iniciales ya creadas. | PROJECT_GUIDE.md, project-roadmap.md, architecture.md |
+| 2026-10-01 | 2, 3, 4 | 8 | Consolidar las credenciales del alta manual empresarial y su cambio obligatorio inicial. | business-rules.md, requirements.md, uc-uatre.md, decisiones-pendientes.md, api-design.md, openapi.yaml, project-roadmap.md |
+| 2026-10-01 | 2, 3, 4 | 8 | Consolidar baja operativa y reactivación de trabajadores con conservación de identidad. | business-rules.md, requirements.md, uc-uatre.md, decisiones-pendientes.md, api-design.md, openapi.yaml, project-roadmap.md |
+| 2026-10-01 | 2, 3, 4 | 8 | Consolidar el ajuste seguro de tamaño de lista sin reasignaciones ni overrides automáticos. | business-rules.md, requirements.md, uc-uatre.md, decisiones-pendientes.md, api-design.md, openapi.yaml, project-roadmap.md |
+| 2026-10-01 | 2, 3, 4, 6 | 8 | Consolidar verificación y cierre de asistencia; registrar migración y revisión de triggers requeridas. | business-rules.md, uc-uatre.md, decisiones-pendientes.md, api-design.md, project-roadmap.md |
+| 2026-10-02 | 2, 3, 4, 5, 6, 7 | 8 | Limpieza documental (fases B-F): propagar D-26/D-30/D-33/D-35/A-06/A-28/C-01/C-05/C-06; alinear esquema (verificado, primera_vez_login, sesiones, 15 tablas); señalar D-09/D-15/D-27; unificar fuentes de verdad en AGENTS.md; podar estado obsoleto. | requirements.md, uc-*.md, business-rules.md, base_datos.md, architecture.md, modelo-dominio.md, diagrama-*.md, PROJECT_GUIDE.md, README.md, execution-plan.md, decisiones-pendientes.md, AGENTS.md, skills uatre-* |
 
 Esto permitirá reconstruir por qué evolucionaron determinadas reglas durante el desarrollo.
 

@@ -4,7 +4,7 @@
 
 **Versión:** 1.0
 **Estado:** Activo
-**Fase actual:** Fase 8 en proceso — Diseño de API; Fase 7 en consolidación — Arquitectura mínima documentada
+**Fase actual:** Fase 8 en proceso — Diseño de API e implementación inicial de acceso y registros; Fase 7 en consolidación — Arquitectura mínima y scaffolding técnico creados
 **Propósito principal:** Contexto operativo para agentes de IA que participen en el desarrollo del sistema.
 
 ---
@@ -53,7 +53,6 @@ El proceso actualmente requiere que el encargado de UATRE gestione manualmente i
 * establecimientos;
 * asistencia;
 * socios;
-* changas;
 * rotaciones;
 * atrasados;
 * anotados;
@@ -78,7 +77,7 @@ El sistema deberá permitir:
 * administrar empresas afiliadas;
 * administrar establecimientos;
 * administrar trabajadores;
-* mantener listas de socios y changas;
+* mantener la lista de socios;
 * registrar asistencia;
 * mantener rotaciones;
 * gestionar atrasados;
@@ -422,36 +421,26 @@ Las estadísticas futuras no forman parte actualmente de esta especificación.
 
 La documentación se divide por responsabilidad.
 
+> **Índice único:** la tabla canónica de fuentes de verdad y el mapa de
+> skills viven en [`AGENTS.md`](../AGENTS.md) (secciones «Fuentes de verdad»
+> y «Skills disponibles»). Esta guía no duplica esa tabla; consultarla allí.
+
+Responsabilidades principales:
+
 ```text
 docs/
 │
-├── PROJECT_GUIDE.md
-├── project-roadmap.md
-├── business-rules.md
-└── requirements.md
+├── PROJECT_GUIDE.md            # contexto general y reglas de trabajo
+├── project-roadmap.md          # fases del proyecto, orden y estado
+├── business-rules.md           # reglas del dominio (consultar antes de tocar lógica)
+├── requirements.md             # qué debe hacer el sistema
+├── decisiones-pendientes.md    # decisiones aprobadas y dudas abiertas
+├── uc-*.md                     # casos de uso por actor
+├── api-design.md / openapi.yaml# contratos HTTP
+├── base_datos.md               # documentación técnica del esquema
+└── architecture.md             # componentes y responsabilidades
+BD/bd_uatre.sql                 # fuente única del esquema físico
 ```
-
-## PROJECT_GUIDE.md
-
-Proporciona contexto general y reglas de trabajo.
-
-No contiene el detalle completo del comportamiento funcional.
-
-## project-roadmap.md
-
-Define las fases del proyecto, su orden y estado.
-
-## business-rules.md
-
-Contiene las reglas detalladas del dominio y del proceso de nombramiento.
-
-Debe consultarse antes de modificar lógica de negocio.
-
-## requirements.md
-
-Contiene los requerimientos funcionales y no funcionales aprobados.
-
-Define qué comportamientos debe proporcionar el sistema.
 
 ---
 
@@ -473,6 +462,10 @@ La documentación deberá utilizarse como contexto previo a la generación o mod
 # 16. Reglas obligatorias para agentes de IA
 
 Todo agente que trabaje sobre este proyecto deberá respetar las siguientes reglas.
+
+> Este desarrollo operativiza las reglas resumidas en
+> [`AGENTS.md`](../AGENTS.md) («Reglas obligatorias para el agente»), que es
+> la fuente canónica. Ante cualquier divergencia, prevalece `AGENTS.md`.
 
 ### 16.1 No inventar
 
@@ -577,7 +570,7 @@ Actualmente se encuentran trabajadas:
 * Fase 4 — Casos de uso.
 * Fase 5 — Modelo de dominio.
 * Fase 6 — Diseño de base de datos.
-* Fase 7 — Arquitectura: base mínima documentada, EN CONSOLIDACIÓN.
+* Fase 7 — Arquitectura: base mínima documentada y scaffolding técnico creado, EN CONSOLIDACIÓN.
 
 La fase en proceso es:
 
@@ -592,29 +585,38 @@ El detalle de objetivos, entregables y estados de todas las fases se encuentra e
 
 El usuario aprobó Node.js + Express y Vite + React en JavaScript, PostgreSQL con
 Prisma y monorepo simple con `backend/` y `frontend/`, cada uno con su package.json.
-Las carpetas de aplicación todavía no se crearon.
+El scaffolding técnico ya existe: Express con Prisma y healthchecks; Vite + React
+con las pantallas iniciales de acceso y registro. El backend implementa por ahora
+los healthchecks, la sesión de EMPRESA/SECCIONAL y los registros públicos iniciales
+de seccionales y empresas; los módulos de negocio restantes siguen pendientes.
 
 El acceso documentado en UC-TRABAJADOR-001 utiliza bcrypt y sesiones con cookies;
-JWT no fue aprobado. Infraestructura, hosting, librerías de jobs y pruebas,
-detalles de sesión y estrategia operativa requieren diseño posterior.
+JWT no fue aprobado. Las pruebas automatizadas iniciales usan el runner nativo
+`node:test`, sin dependencias adicionales. Infraestructura, hosting, librerías de
+jobs, controles de calidad adicionales, detalles de sesión y estrategia operativa
+requieren diseño posterior.
 
 Decisiones de acceso posteriores: no bloquear por cantidad de intentos fallidos;
 sesión de una hora renovable con navegación e interacción del usuario, no con
-refrescos automáticos; trabajador puede ingresar por el nombre propio consignado
-en el registro o email con contraseña (homónimos pendientes). Nueva contraseña:
+refrescos automáticos; el identificador del trabajador es exclusivamente el
+email (D-33 consolidada) y hasta implementar Google no se habilita login
+local de trabajadores (D-35 consolidada). Nueva contraseña:
 mínimo 8 caracteres, mayúscula, minúscula, número y símbolo obligatorios.
-Recuperación por email queda para implementación futura. Consultar D-29, D-33 y D-34.
+Recuperación por email queda para implementación futura. Consultar D-29, D-34 y D-36.
 
 Decisión posterior: guardar correo válido de Gmail del trabajador; ingreso con
 Gmail aplazado mediante «Continuar con Google» (autenticación Google aprobada,
-no implementada). Precisar sustitución del acceso por nombre/contraseña y efectos
-sobre contraseña temporal/cambio inicial (D-35/D-36). La validación de formato no
+no implementada; D-35 fija que Google será el único acceso de trabajador).
+Precisar efectos sobre contraseña temporal/cambio inicial y vinculación con el
+alta de UATRE (D-36). La validación de formato no
 verifica titularidad. El trabajador sigue siendo dado de alta por UATRE.
 
 [architecture.md](./architecture.md) define la arquitectura mínima: monolito
 modular, PostgreSQL local para desarrollo, proxy Vite `/api`, responsabilidades,
-estructura prevista y transición a migraciones Prisma. El usuario confirmó tener
-PostgreSQL instalado; su versión y conexión aún no se verificaron. No se creó código.
+estructura y transición a migraciones Prisma. PostgreSQL 18.6 y la conexión local
+fueron verificados; `uatre_dev` usa la migración Prisma y `uatre_test` el SQL con
+fixtures. El código existente no implementa todavía reglas de negocio, motor,
+asistencia, pedidos, designaciones, pizarrón ni historial.
 
 Fase 7 está EN CONSOLIDACIÓN; la Fase 8 avanza con contratos provisionales cuando
 falten definiciones. Consultar [decisiones-pendientes.md](./decisiones-pendientes.md)

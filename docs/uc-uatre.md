@@ -110,6 +110,7 @@ Comprende dos operaciones fundamentales de administración estructural que UATRE
 1. Seccional autenticada (usuario tipo SECCIONAL)
 2. Número existe en LISTA_ROTACION de esa seccional y está `activo = TRUE`
 3. Número tiene un `trabajador_id` asignado (ocupado)
+4. El trabajador no tiene designaciones ni trabajos activos
 
 ### Flujo principal A: Registrar seccional (alta inicial)
 
@@ -143,6 +144,8 @@ Comprende dos operaciones fundamentales de administración estructural que UATRE
 6. Sistema actualiza:
    - `lista_rotacion.trabajador_id = NULL` (desvincula al trabajador)
    - `lista_rotacion.activo = FALSE` (número queda inactivo)
+   - `trabajadores.activo = FALSE` y `usuarios.activo = FALSE`
+   - Atrasos y sanciones pendientes del trabajador a cero
 7. Sistema muestra confirmación: "Número liberado correctamente"
 8. El número liberado deja de participar en el motor y en la rotación ordinaria (`activo = TRUE` es condición de consulta)
 
@@ -152,7 +155,8 @@ Comprende dos operaciones fundamentales de administración estructural que UATRE
 - FA-2 (Registro): Email ya registrado en USUARIOS → "El email ya está en uso"
 - FA-3 (Registro): Cantidad de números inválida (≤ 0) → "Debe indicar una cantidad válida de números"
 - FA-4 (Liberación): Número ya estaba libre/inactivo → "El número ya se encuentra libre"
-- FA-5 (Liberación): Número tiene designaciones activas del trabajador → advertencia antes de confirmar (no bloquea la liberación, pero informa a UATRE)
+- FA-5 (Liberación): Trabajador tiene designaciones o trabajo activo → se rechaza
+  la liberación sin realizar cambios
 - FA-6: Error de conexión con la BD → mensaje de error genérico + reintento
 
 ### Postcondiciones:
@@ -166,9 +170,49 @@ Comprende dos operaciones fundamentales de administración estructural que UATRE
 **Si exitoso (liberación):**
 - `lista_rotacion.trabajador_id = NULL`
 - `lista_rotacion.activo = FALSE`
+- TRABAJADORES y USUARIOS asociados: `activo = FALSE`
+- ATRASOS: `cantidad = 0` y sin primer atraso pendiente
+- SANCIONES: sin turnos pendientes ni sanción activa
 - El número no es evaluado por el motor de nombramiento (Fase 2 y validaciones de disponibilidad)
 - El histórico de la fila se conserva (no se borra, ver RN-154)
-- El número puede reactivarse en el futuro asignándolo a otro trabajador (ver UC-UATRE-002)
+- La reactivación posterior de esta misma persona requiere un flujo específico;
+  no se crea una identidad nueva porque documento y email son únicos globales
+
+### Flujo principal C: Reactivar trabajador y asignar número
+
+1. UATRE busca un trabajador inactivo de su propia seccional.
+2. UATRE selecciona un número libre; puede seleccionar el número previamente
+   liberado si lo reactiva.
+3. Sistema valida que el número esté libre e inactivo o activo dentro de la
+   misma seccional.
+4. Sistema reactiva trabajador, usuario y número, y vincula el número con la
+   identidad existente.
+5. Sistema conserva la contraseña y el estado de primer acceso que ya tenía la
+   cuenta; no genera ni entrega nuevas credenciales.
+
+**Postcondiciones de reactivación:**
+- TRABAJADORES y USUARIOS asociados: `activo = TRUE`.
+- LISTA_ROTACION: número seleccionado activo y vinculado al trabajador.
+- Se preservan identidad, historial y contraseña previa.
+- Atrasos y sanciones continúan reiniciados conforme a la liberación anterior.
+
+### Flujo principal D: Ajustar cantidad de números
+
+1. UATRE indica la nueva cantidad de números para su propia seccional.
+2. Al reducir, el sistema verifica que no haya números ocupados por encima del
+   nuevo límite y que el punto de rotación permanezca dentro del rango.
+3. Si ambas condiciones se cumplen, el sistema actualiza
+   `seccionales.cantidad_numeros` y desactiva los números libres que quedan fuera
+   del límite, sin borrar sus filas.
+4. Al aumentar, el sistema activa primero números libres históricos dentro del
+   nuevo rango y crea posiciones nuevas solo si faltan.
+5. Sistema confirma el nuevo tamaño de lista.
+
+**Flujos alternativos de ajuste:**
+- FA-7: existe un número ocupado por encima del nuevo límite → sistema rechaza
+  hasta que UATRE libere o reasigne al trabajador.
+- FA-8: `punto_rotacion` queda fuera del nuevo rango → sistema rechaza hasta que
+  UATRE aplique un override explícito del punto.
 
 **Si falla:**
 - Ningún cambio persistido
@@ -189,10 +233,11 @@ Comprende dos operaciones fundamentales de administración estructural que UATRE
 
 - REQ-UATRE-001: Registrar seccional
 - REQ-UATRE-012: Liberar número
+- REQ-UATRE-014: Ajustar cantidad de números
 
 ### Casos de uso asociados:
 
-- UC-UATRE-002: Registrar nuevo trabajador en la seccional (reactivación de un número liberado)
+- UC-UATRE-002: Registrar nuevo trabajador en la seccional
 - UC-UATRE-005: Override de rotación (afecta el mismo `punto_rotacion` gestionado aquí en el alta)
 
 ---
@@ -248,10 +293,16 @@ Comprende el alta de empresas afiliadas a la seccional —que puede realizarse p
 ### Flujo principal B: Alta manual por UATRE
 
 1. UATRE accede a administración de empresas dentro de su panel
-2. UATRE completa formulario con los mismos datos del Flujo A (nombre, localidad, provincia, email, contraseña) — la seccional queda implícita (la del propio UATRE)
+2. UATRE completa formulario con nombre, localidad, provincia y email; la
+   seccional queda implícita (la del propio UATRE)
 3. Sistema realiza las mismas validaciones y creación del Flujo A (pasos 4-5)
-4. Sistema genera contraseña temporal (mismo mecanismo que UC-UATRE-002 para trabajadores) o UATRE define una contraseña inicial, según disponibilidad de contacto directo con la empresa
-5. UATRE entrega las credenciales a la empresa por un medio seguro
+4. Sistema genera una contraseña temporal de 12 caracteres con el mismo
+   mecanismo de UC-UATRE-002 y crea el usuario EMPRESA con
+   `primera_vez_login = TRUE`
+5. UATRE entrega a la empresa el email como identificador y la contraseña
+   temporal por un medio seguro
+6. En su primer acceso, la empresa debe cambiar obligatoriamente la contraseña
+   antes de crear pedidos u operar otras funcionalidades
 
 ### Flujo principal C: Activar/Desactivar empresa
 
@@ -276,7 +327,9 @@ Comprende el alta de empresas afiliadas a la seccional —que puede realizarse p
 **Si exitoso (alta, cualquier flujo):**
 - EMPRESAS: nuevo registro con `activa = TRUE`
 - USUARIOS: nuevo usuario tipo EMPRESA
-- Empresa puede iniciar sesión y crear pedidos
+- Autoregistro: empresa puede iniciar sesión y crear pedidos
+- Alta manual: UATRE recibe una única vez el email y la contraseña temporal;
+  la empresa debe cambiarla en su primer acceso antes de operar
 
 **Si exitoso (activar/desactivar):**
 - `EMPRESAS.activa` actualizado al nuevo valor
@@ -329,8 +382,10 @@ UATRE abre diariamente el apartado de asistencia, marca el estado de cada númer
 
 1. UATRE accede al apartado de ASISTENCIA
 2. Sistema consulta TRABAJADORES activos de la seccional para HOY (vía números activos de LISTA_ROTACION)
-3. Sistema crea registros en ASISTENCIA: `trabajador_id`, `fecha = HOY`, `presente = FALSE`, `cerrado = FALSE`
-4. Trigger `trg_reset_presente_hoy` (BEFORE INSERT) resetea `trabajadores.presente_hoy = FALSE` para todos
+3. Sistema crea registros en ASISTENCIA: `trabajador_id`, `fecha = HOY`,
+   `presente = FALSE`, `verificado = FALSE`, `cerrado = FALSE`
+4. La apertura no modifica `trabajadores.presente_hoy` ni
+   `trabajadores.presente_ayer`; los flags previos permanecen válidos hasta el cierre
 5. Sistema muestra cuadrícula: Número | Trabajador | Estado
 
 **B. Interacción con la cuadrícula**
@@ -338,7 +393,8 @@ UATRE abre diariamente el apartado de asistencia, marca el estado de cada númer
 6. UATRE interactúa con los casilleros:
    - Toque simple → marca PRESENTE (RN-024)
    - Pulsación sostenida → abre menú con opciones PRESENTE / AUSENTE / ANOTADO (RN-025)
-7. Sistema actualiza `ASISTENCIA.presente` según la selección
+7. Sistema actualiza `ASISTENCIA.presente` y `ASISTENCIA.verificado = TRUE`
+   según la selección. ANOTADO conserva la presencia elegida como condición independiente
 8. Colores de la cuadrícula reflejan el estado (RN-026): Verde=PRESENTE, Rojo=AUSENTE, Amarillo=TRABAJANDO, Azul=ATRASADO, Gris=ANOTADO, Gris oscuro=SANCIONADO
 9. UATRE repite hasta verificar todos los números
 
@@ -346,7 +402,7 @@ UATRE abre diariamente el apartado de asistencia, marca el estado de cada númer
 
 10. Sistema valida (RN-166) antes de habilitar el botón "CERRAR ASISTENCIA":
     - Todos los números activos tienen registro en ASISTENCIA para hoy
-    - Todos esos registros tienen `presente` definido (`TRUE` o `FALSE`)
+    - Todos esos registros tienen `verificado = TRUE`
     - Hora actual >= 07:40 (Zona Argentina UTC-3, RN-168)
 11. Si ambas condiciones se cumplen, el botón se habilita
 12. UATRE hace clic en "CERRAR ASISTENCIA"
@@ -354,11 +410,13 @@ UATRE abre diariamente el apartado de asistencia, marca el estado de cada númer
 
 **D. Efectos automáticos en cadena (disparados por el cierre):**
 
-14. Trigger `trg_sync_presente_flags` (AFTER INSERT OR UPDATE, WHERE cerrado=TRUE): para cada trabajador, `presente_ayer = presente_hoy` (valor previo) y `presente_hoy = NEW.presente`
+14. Trigger `trg_sync_presente_flags` (AFTER UPDATE, WHERE cerrado=TRUE): para
+    cada trabajador, `presente_ayer = presente_hoy` (valor previo) y
+    `presente_hoy = NEW.presente`
 15. Trigger `trg_descuento_atraso_ausencia` (RN-022): si el trabajador está AUSENTE y tiene atrasos pendientes, descuenta 1 atraso (máximo una vez por trabajador y jornada)
 16. Motor de nombramiento inicia automáticamente dentro de la transacción de cierre (RN-167):
     - Procesa COLA_PEDIDOS con `fecha_procesamiento_programado <= NOW()`, en orden FIFO
-    - Ejecuta `fn_ejecutar_motor(pedido_id)` para cada pedido en cola (ver `diagrama-motor.md`: Fase 1 Atrasados, Fase 2 Rotación ordinaria, Fase 3 Cobertura excepcional)
+    - Ejecuta `fn_ejecutar_motor(pedido_id)` para cada pedido en cola (ver `diagrama-motor.md`: Fase 1 Atrasados, Fase 2 Rotación ordinaria; la cobertura excepcional es **manual** por D-06 — ver aviso en `base_datos.md`)
     - Cada designación creada dispara `trg_descontar_atraso_al_designar`, descontando 1 atraso adicional si correspondía
 17. Sistema confirma: asistencia cerrada, flags sincronizados, atrasos actualizados, pedidos en cola procesados
 
@@ -510,7 +568,7 @@ UATRE puede definir manualmente el número desde el cual debe reanudarse la rota
 
 UATRE puede inhabilitar a un trabajador para una empresa específica (registro en INHABILITACIONES) o rehabilitarlo (elimina el registro). El modelo funciona **por excepción**: por defecto todos los trabajadores están habilitados para todas las empresas de la seccional; solo se registran las inhabilitaciones puntuales.
 
-> **Nota de consolidación:** se corrigió RN-162, que originalmente preveía un motivo en texto libre para la inhabilitación. El esquema real de la tabla `INHABILITACIONES` (`database-sql.md`) no contempla esa columna, por lo que se decidió alinear la regla al esquema implementado: la inhabilitación no lleva motivo, solo el par (trabajador, empresa) y su fecha.
+> **Nota de consolidación:** se corrigió RN-162, que originalmente preveía un motivo en texto libre para la inhabilitación. El esquema real de la tabla `INHABILITACIONES` (`BD/bd_uatre.sql`) no contempla esa columna, por lo que se decidió alinear la regla al esquema implementado: la inhabilitación no lleva motivo, solo el par (trabajador, empresa) y su fecha.
 
 ### Precondiciones:
 
@@ -709,6 +767,8 @@ Este UC se mantiene como entrada separada por pertenecer al documento de casos d
 ### Flujo automático del sistema asociado (sin actor humano directo):
 
 - REQ-SISTEMA-003: Renovación pizarrón 00:00 — los pedidos completados salen del pizarrón y los pedidos sin cubrir se transfieren al nuevo día.
+  **⚠️ D-09:** los pedidos vencidos se cierran como NO_CUBIERTO; verificar
+  `decisiones-pendientes.md` antes de implementar la transferencia.
 
 ---
 

@@ -1,0 +1,32 @@
+{
+  "name": "uatre-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API del Sistema de Gestión y Asignación de Personal Eventual para UATRE",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "bcrypt": "6.0.0",
+    "cookie-parser": "1.4.7",
+    "dotenv": "18.0.5",
+    "express": "5.2.1"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

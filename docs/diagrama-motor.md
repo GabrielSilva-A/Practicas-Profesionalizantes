@@ -8,9 +8,17 @@
 
 **Función:** fn_ejecutar_motor(pedido_id)
 
+> ⚠️ **Avisos de consolidación:**
+> - **D-06:** la cobertura excepcional es **manual** — el motor SQL actual
+>   aún la ejecuta automáticamente (bloqueador en `execution-plan.md`); el
+>   flujo correcto se detiene tras la rotación ordinaria y UATRE autoriza
+>   las etapas.
+> - **C-04 (abierta):** este diagrama omite ANOTADO y sanciones; rediseñar
+>   antes de usarlo como especificación.
+
 ---
 
-## Flujo del Motor (3 fases)
+## Flujo del Motor (fases automáticas)
 
 ```
 ENTRADA: pedido_id, cantidad_requerida
@@ -249,4 +257,4 @@ Liberación: Al terminar sanción (turnos_pendientes = 0) → vuelve a usar prio
 
 **Versión:** 1.0
 **Fecha:** 2026-09-17
-**Referencias:** RN-077 a RN-092, RN-101 a RN-114, REQ-UATRE-004, database-sql.md
+**Referencias:** RN-077 a RN-092, RN-101 a RN-114, REQ-UATRE-004, BD/bd_uatre.sql

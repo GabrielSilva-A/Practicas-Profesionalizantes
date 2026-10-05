@@ -23,12 +23,14 @@
 ✅ Eliminar pedidos (si no fueron procesados)  
 ✅ Ver estado de sus pedidos  
 ✅ Ver historial de pedidos  
-✅ Recibir notificación si no hay cobertura  
+✅ Ver la falta de cobertura en el estado del pedido  
 
 ### Si NO hay cobertura:
 
-- Sistema dispara ALERTA a EMPRESA
-- Mensaje: "No hay trabajadores disponibles para este pedido"
+- El pedido queda con estado `NO_CUBIERTO`, visible en "Mis pedidos"
+- La empresa lo consulta en el detalle del pedido (D-26 consolidada: **no se
+  envían notificaciones en esta etapa**; las faltas de cobertura se muestran
+  exclusivamente en las vistas correspondientes)
 - Empresa debe llamar manualmente a responsables de nombramiento
 - Sin acceso a información detallada de por qué no hay cobertura
 
@@ -67,7 +69,7 @@ Empresa crea una solicitud de personal eventual indicando cantidad, fecha, horar
    - **Si corresponde procesamiento INMEDIATO:** dispara el motor de nombramiento sobre el estado válido actual de la lista; el pedido pasa a `EN_PROCESO` y luego a `CUBIERTO`/`NO_CUBIERTO` según el resultado
    - **Si corresponde ENVIAR A COLA:** `INSERT INTO cola_pedidos` con `fecha_procesamiento_programado` y `orden` (FIFO por momento de creación, RN-067); el pedido queda `PENDIENTE` hasta el próximo cierre de asistencia (REQ-SISTEMA-004)
 7. Sistema confirma la creación del pedido a la empresa, mostrando únicamente el estado resultante (sin exponer lógica interna de cola/motor)
-8. Si el procesamiento (inmediato o en cola) finaliza sin cubrir la cantidad solicitada, el sistema dispara una alerta a la empresa: "No hay trabajadores disponibles para este pedido"
+8. Si el procesamiento (inmediato o en cola) finaliza sin cubrir la cantidad solicitada, el pedido queda en `NO_CUBIERTO` y la empresa lo ve en el estado de su pedido (sin notificación: D-26 consolidada)
 
 ### Flujos alternativos:
 
@@ -75,7 +77,7 @@ Empresa crea una solicitud de personal eventual indicando cantidad, fecha, horar
 - FA-2: Cantidad requerida ≤ 0 → "La cantidad debe ser mayor a 0"
 - FA-3: Fecha/horario inválido (ej. fecha pasada) → "Fecha u horario inválido"
 - FA-4: Error de BD al crear el pedido → pedido no creado, mensaje de error genérico
-- FA-5: Sin cobertura tras el procesamiento → alerta a la empresa; sin acceso a detalle de por qué no hubo cobertura
+- FA-5: Sin cobertura tras el procesamiento → pedido en `NO_CUBIERTO`, visible en el estado; sin notificación (D-26) y sin acceso a detalle de por qué no hubo cobertura
 
 ### Postcondiciones:
 
@@ -83,7 +85,7 @@ Empresa crea una solicitud de personal eventual indicando cantidad, fecha, horar
 - Pedido creado en PEDIDOS con estado inicial `PENDIENTE`
 - Según RN-063: procesado inmediatamente (pudiendo terminar `EN_PROCESO`, `CUBIERTO` o `NO_CUBIERTO`) o encolado en COLA_PEDIDOS
 - Empresa recibe confirmación de creación
-- Si no hay cobertura, empresa recibe alerta correspondiente
+- Si no hay cobertura, el pedido queda visible en `NO_CUBIERTO` para la empresa (sin notificación, D-26)
 
 **Si falla:**
 - Pedido NO creado
@@ -141,8 +143,14 @@ Empresa consulta el estado actual de sus pedidos (cantidad solicitada vs. asigna
    - Estado visible para la empresa:
      - `PENDIENTE` / `EN_PROCESO` → "En proceso"
      - `CUBIERTO` / `COMPLETO` → "Completo"
-     - `NO_CUBIERTO` → "Sin cobertura" (con la alerta ya disparada en UC-EMPRESA-001)
+     - `NO_CUBIERTO` → "Sin cobertura" (estado visible en la lista; sin alerta, D-26)
      - `CANCELADO` → "Cancelado" (RN-146)
+     
+     > ⚠️ **Señalización D-27 (pendiente de propagar):** la decisión D-27
+     > (CONSOLIDADA en `decisiones-pendientes.md`) define que la empresa ve
+     > Pendiente, En proceso, Completo, Sin cobertura y Cancelado; REQ-EMPRESA-004
+     > aún menciona `COMPLETADO`, que no es un estado persistido. Resolver la
+     > equivalencia de estados antes de implementar UC-EMPRESA-002.
 4. Empresa puede seleccionar un pedido para ver el detalle (fecha, horario, tarea, establecimiento)
 
 ### Flujos alternativos:

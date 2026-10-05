@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "uatre-domain-rules": "allow",
+    "uatre-api-contracts": "allow",
+    "uatre-database-schema": "allow",
+    "uatre-motor-flow": "allow",
+    "uatre-consolidation": "allow"
+  }
+}

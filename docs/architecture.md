@@ -4,13 +4,14 @@
 
 **Fase:** 7 — EN CONSOLIDACIÓN
 
-**Estado:** Base arquitectónica definida; implementación pendiente
+**Estado:** Base arquitectónica y scaffolding técnico inicial implementados; módulos de negocio pendientes
 
 ## 1. Alcance y evidencia
 
 Este documento consolida la arquitectura mínima solicitada para preparar el
-desarrollo. No acredita una aplicación ejecutable ni el cierre de todas las
-decisiones de arquitectura.
+desarrollo. El repositorio ya contiene el scaffolding ejecutable de backend y
+frontend, pero esto no acredita el cierre de todas las decisiones de arquitectura
+ni la implementación de los módulos de negocio.
 
 ### Decisiones aprobadas
 
@@ -18,8 +19,9 @@ decisiones de arquitectura.
 - PostgreSQL con Prisma.
 - Monorepo simple con `backend/` y `frontend/`, cada uno con su `package.json`.
 - Backend como monolito modular: una aplicación organizada por funcionalidades.
-- PostgreSQL local para desarrollo: el usuario confirmó que está instalado.
-  Versión, servicio activo, conexión y herramientas disponibles aún no comprobados.
+- PostgreSQL local para desarrollo: PostgreSQL 18.6, servicio y conexión local
+  verificados. `uatre_dev` utiliza la migración Prisma y `uatre_test` el SQL con
+  fixtures de demostración.
 - Proxy de Vite para `/api` en desarrollo.
 - Conservar y revisar las funciones SQL existentes; no duplicar sus efectos en JS.
 
@@ -33,10 +35,13 @@ Consultar [decisiones-pendientes.md](./decisiones-pendientes.md) para bloqueos.
 
 ### Fuera del alcance de esta consolidación
 
-No se seleccionan bibliotecas de sesiones, jobs, validación o pruebas; tampoco
-hosting ni despliegue. El acceso Google está aprobado para una etapa futura,
-con coexistencia/sustitución del acceso local todavía pendiente (D-35/D-36).
-La arquitectura permite crear la base técnica sin resolver esas dudas de acceso.
+No se seleccionan bibliotecas de jobs ni de validación; tampoco hosting ni
+despliegue. Las pruebas automatizadas iniciales usan el runner nativo `node:test`,
+sin dependencias adicionales. Las sesiones ya están resueltas por A-17 (token
+opaco en PostgreSQL con cookie). El acceso Google está aprobado como único
+acceso de trabajador para una etapa futura (D-35 consolidada); la vinculación
+con el alta realizada por UATRE sigue pendiente (D-36).
+La arquitectura permite crear la base técnica sin resolver esa última duda.
 
 ## 2. Componentes y comunicación
 
@@ -77,15 +82,16 @@ Flujo de referencia: petición → validación → autorización/contexto de sec
 → servicio/transacción → resultado filtrado → respuesta. Las comprobaciones de
 pertenencia se repiten donde sea necesario para preservar integridad.
 
-## 4. Estructura prevista
+## 4. Estructura actual
 
-Las rutas de este apartado son futuras; no se crean carpetas vacías para cada módulo.
+La base técnica existe. Las carpetas de módulos que todavía no tienen operaciones
+implementadas no se crean vacías.
 
 ```text
 /
 ├─ AGENTS.md
-├─ README.md                     # creación posterior
-├─ .opencode/skills/uatre-development/SKILL.md
+├─ README.md
+├─ .opencode/skills/                  # skills uatre-* (lista en AGENTS.md)
 ├─ docs/
 ├─ BD/                           # referencia SQL existente
 ├─ backend/
@@ -119,13 +125,15 @@ Las rutas de este apartado son futuras; no se crean carpetas vacías para cada m
 ### Backend
 
 `app.js` configura Express sin abrir el puerto; `server.js` inicia la escucha
-y coordina cierre ordenado. Esto permite verificar la app sin iniciar siempre
-un proceso servidor real. Configuración valida entorno antes de aceptar peticiones.
-`database/` mantiene un cliente Prisma compartido por proceso, no uno por petición.
+y coordina cierre ordenado. `database/` mantiene un cliente Prisma compartido por
+proceso, no uno por petición. El código actual incluye healthchecks, autenticación
+por sesión y registros públicos iniciales de seccionales y empresas.
 
 Cada funcionalidad crea rutas, controlador, servicio y validación cuando los
 necesite. Acceso a datos puede empezar en el servicio; extraerlo si el módulo
-crece. No exigir un repositorio genérico ni un CRUD por tabla.
+crece. No exigir un repositorio genérico ni un CRUD por tabla. Los módulos de
+administración autenticada, asistencia, pedidos, designaciones, pizarrón e
+historial todavía no están implementados.
 
 Los módulos se basan en áreas del dominio: administración e identidad;
 asistencia/disponibilidad/rotación; pedidos/designaciones; pizarrón/historial.
@@ -135,8 +143,8 @@ La separación concreta evoluciona con las iteraciones.
 
 `features/` organiza pantallas y lógica por funcionalidad; `components/` contiene
 elementos realmente compartidos; `services/` centraliza comunicación HTTP y errores.
-`app/` compone aplicación y navegación. Biblioteca de routing y otras dependencias
-no se seleccionan implícitamente por esta estructura.
+`app/` compone aplicación y navegación. La pantalla actual permite registro y
+acceso de empresas y seccionales; las vistas de gestión continúan pendientes.
 
 ## 5. Persistencia y migraciones
 
@@ -147,15 +155,19 @@ no se seleccionan implícitamente por esta estructura.
 4. Verificar desde una base vacía la secuencia completa de creación y cambios.
 5. Separar datos de demostración de datos operativos.
 
-`BD/` se conserva durante la transición. Hoy su README exige mantener el SQL y
-`docs/database-sql.md` idénticos; no se elimina esa fuente ni se cambia el flujo
-sin documentar la transición. Futuramente las migraciones deberán ser el registro
-reproducible de cambios, sin editar migraciones ya aplicadas.
+`BD/` se conserva durante la transición. El 2026-10-01 se eliminó
+`docs/database-sql.md` por duplicarse byte a byte con `BD/bd_uatre.sql`, que
+quedó como fuente única del esquema físico; los apuntadores de `AGENTS.md`,
+skills y docs fueron redirigidos en esa misma transición. Futuramente las
+migraciones deberán ser el registro reproducible de cambios, sin editar
+migraciones ya aplicadas.
 
 No ejecutar el DDL actual sobre una base con datos como si fuera incremental;
 no sustituir migraciones revisadas por sincronización automática del esquema.
-`primera_vez_login` está aprobado, pero todavía no existe en SQL (C-06) y su uso
-en el acceso trabajador debe considerar D-36.
+`primera_vez_login` está aprobado (A-06/A-23) y ya existe en `BD/bd_uatre.sql`
+y en `backend/prisma/schema.prisma` (migración
+`20261001204500_access_and_attendance_foundation`); falta documentarlo en
+`base_datos.md`. Su uso en el acceso trabajador debe considerar D-36.
 
 ### Motor y efectos
 
@@ -165,7 +177,10 @@ dentro de la transacción correspondiente. No construir SQL concatenando entrada
 Antes de habilitar cada efecto, documentar quién lo realiza: servicio, función o
 trigger. Ejemplos: atraso inicial y descuento de atraso ya aparecen como triggers;
 el cierre llama al procesamiento correspondiente conforme a RN-167. El SQL
-actual no se da por correcto solo por ejecutar: C-04 y D-01 a D-14 siguen abiertos.
+actual no se da por correcto solo por ejecutar: C-04 sigue abierta,
+`fn_ejecutar_motor` aún ejecuta cobertura excepcional automática (D-06) y
+`fn_decidir_procesamiento_pedido` no verifica el cierre real de asistencia
+(D-03); D-01 a D-14 están consolidadas en `decisiones-pendientes.md`.
 
 ## 6. Identidad, autorización y privacidad
 
@@ -182,8 +197,10 @@ actual no se da por correcto solo por ejecutar: C-04 y D-01 a D-14 siguen abiert
   seleccionar sesiones y despliegue.
 
 Base documentada: bcrypt y sesiones servidor con cookies HttpOnly/Secure/SameSite.
-JWT no está aprobado. Biblioteca, almacenamiento persistente de sesión y mecanismo
-CSRF están pendientes; no se sustituye persistencia operativa por memoria del proceso.
+JWT no está aprobado. La persistencia de sesión está resuelta por A-17: tabla
+`sesiones` con hash SHA-256 del identificador. El mecanismo CSRF y la
+acreditación de actividad (D-29) siguen pendientes; no se sustituye persistencia
+operativa por memoria del proceso.
 
 No bloquear por cantidad de intentos fallidos. La sesión de una hora se renueva
 con navegación/interacción, no con refrescos automáticos. D-29 mantiene pendiente
@@ -224,7 +241,8 @@ Polling del cliente no sustituye ejecución de jobs ni renueva sesión.
 - Usar PostgreSQL instalado localmente; comprobar versión y conexión al iniciar
   el bloque técnico. No se incorpora Docker como requisito.
 - Preparar una base exclusiva de desarrollo; para integración, otra base de pruebas.
-  Nombres y creación se definirán al preparar persistencia; no se creó ninguna ahora.
+  Ya existen `uatre_dev` (migración Prisma) y `uatre_test` (SQL con fixtures);
+  la base preexistente `uatre_db` (13 tablas) no se modificó.
 - Ejecutar Vite y Express en puertos distintos, configurables. Vite redirige `/api`
   al backend; el cliente utiliza rutas relativas como `/api/v1/health`.
 - Propuesta de configuración backend: `DATABASE_URL`, `PORT`, `NODE_ENV`;
@@ -239,34 +257,40 @@ Polling del cliente no sustituye ejecución de jobs ni renueva sesión.
 - Cierre ordenado: dejar de aceptar peticiones, terminar trabajo en curso y
   desconectar Prisma. Las políticas de tiempo de espera se definen al implementarlo.
 
-## 10. Primer bloque de código y criterios de aceptación
+## 10. Primer bloque técnico implementado
 
-Después de esta consolidación, preparar estandarización y base técnica:
+El repositorio ya contiene:
 
-1. Crear Express y Vite + React con scripts y configuración mínima documentada.
-2. Conectar Prisma a PostgreSQL local sin ejecutar el motor.
-3. Crear salud de API y comprobación separada de disponibilidad de BD; contratos
-   precisos en Fase 8, sin exponer configuración interna.
-4. Mostrar en React resultado de comunicación con la API.
-5. Documentar comandos de ejecución y comprobación en README.
+1. Express y Vite + React, con scripts y configuración documentados.
+2. Prisma conectado a PostgreSQL local mediante `DATABASE_URL`, sin ejecutar el
+   motor de nombramiento.
+3. `GET /api/v1/health` y `GET /api/v1/health/db`, que separan la salud de la API
+   de la disponibilidad de base de datos.
+4. Registro público de seccionales y empresas, más login/logout y consulta de
+   sesión para los actores EMPRESA y SECCIONAL.
+5. Cliente React con formularios de registro y acceso que consumen la API por el
+   proxy de Vite.
+6. Comandos de instalación, migración y ejecución documentados en `README.md`.
 
-Aceptar el bloque solo tras verificar inicio, build del cliente, comunicación por
-proxy, consulta mínima a BD, errores por configuración/conexión y cierre de recursos.
-No se requieren reglas ambiguas de nombramiento para este recorrido técnico.
+Este bloque no implementa el motor de nombramiento ni los módulos de negocio y no
+cierra las decisiones de sesión, concurrencia, jobs o despliegue. Los contratos
+de API que aún no tienen ruta ejecutable deben mantenerse identificados como futuros
+o provisionales.
 
 ## 11. Pendientes y cierre de arquitectura
 
 | Pendiente | Momento en que debe resolverse |
 | --- | --- |
 | Versiones y variables finales | Creación de base técnica. |
-| Sesiones, CSRF, auditoría y actividad | Antes de habilitar acceso protegido; D-29/D-30/D-32. |
-| Google y contraseña inicial | Iteración de acceso trabajador; D-35/D-36 aplazadas. |
-| Migraciones e integridad SQL | Iteración de persistencia; C-04 a C-06. |
+| CSRF y acreditación de actividad (D-29) | Antes de habilitar acceso protegido. Sesiones: A-17 implementada; D-30 (sin auditoría) y D-32 consolidadas. |
+| Google y contraseña inicial | Iteración de acceso trabajador; D-35 consolidada (Google como único acceso), D-36 pendiente. |
+| Migraciones e integridad SQL | Iteración de persistencia; C-04 y C-05. |
 | Bloqueos, aislamiento y reintentos | Antes de habilitar motor concurrente. |
 | Biblioteca/ejecución de jobs y recuperación | Antes del ciclo laboral automático. |
 | Hosting, backups y restauración | Diseño de operación y Fase 13; RNF-004. |
-| Herramientas de pruebas y calidad | Selección explícita al preparar verificaciones. |
+| Herramientas de pruebas y calidad | `node:test` seleccionado para pruebas automatizadas iniciales; ampliar cobertura y definir controles de calidad al implementar módulos de negocio. |
 
-La base mínima queda documentada; Fase 7 pasa a EN CONSOLIDACIÓN. No marcarla
-COMPLETADA por crear el documento: revisar pendientes aplicables y coherencia con
-API, modelo físico y reglas antes de cerrar la arquitectura correspondiente.
+La base mínima y el scaffolding inicial están creados; Fase 7 permanece EN
+CONSOLIDACIÓN. No marcarla COMPLETADA por crear el documento o el scaffolding:
+revisar pendientes aplicables y coherencia con API, modelo físico y reglas antes de
+cerrar la arquitectura correspondiente.

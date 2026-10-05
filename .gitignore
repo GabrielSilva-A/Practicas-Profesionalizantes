@@ -1,0 +1,31 @@
+# Dependencias de las aplicaciones
+node_modules/
+
+# Variables locales y secretos; las plantillas sin secretos sí se versionan
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Salidas generadas y cobertura
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Logs de ejecución
+logs/
+*.log
+
+# Backups locales de PostgreSQL (los scripts .sql se conservan)
+backups/
+*.dump
+*.backup
+
+# Archivos locales del sistema operativo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# No ignorar docs/, BD/, prisma/migrations/, skills ni package-lock.json.
+# .opencode/ mantiene sus propias exclusiones locales.

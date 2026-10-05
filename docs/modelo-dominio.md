@@ -351,15 +351,24 @@ Valida y cierra la asistencia, actualiza las condiciones que dependen de ella, h
 
 ## 8. Decisiones aplazadas
 
-La Fase 5 no resuelve decisiones de diseño posteriores. Permanecen deliberadamente abiertas:
+La Fase 5 no resolvía decisiones de diseño posteriores. Estado actual de cada
+una (actualizado 2026-10-02):
 
-- representación física de establecimientos;
-- tablas, claves, índices, constraints, vistas, triggers y transacciones;
-- módulos, servicios de aplicación y responsabilidades de frontend/backend;
-- contratos HTTP, endpoints, autorización técnica y formato de errores;
-- componentes, rutas y experiencia visual.
+- representación física de establecimientos → **resuelta**: tabla
+  `ESTABLECIMIENTOS` en `BD/bd_uatre.sql`;
+- tablas, claves, índices, constraints, vistas, triggers y transacciones →
+  **resueltos** en `BD/bd_uatre.sql` (15 tablas, 7 vistas, 9 triggers,
+  11 funciones, 42 índices) y en las migraciones de Prisma (añaden
+  `sesiones`);
+- módulos, servicios de aplicación y responsabilidades de frontend/backend →
+  **resueltos** en `architecture.md`;
+- contratos HTTP, endpoints, autorización técnica y formato de errores →
+  **parcialmente resueltos** en `api-design.md` y `openapi.yaml`;
+- componentes, rutas y experiencia visual → **pendientes** (fases de
+  frontend; no adelantar).
 
-Estas decisiones deberán partir de este modelo, las reglas de negocio y los casos de uso en las fases 6 a 9.
+Las decisiones restantes deberán partir de este modelo, las reglas de
+negocio y los casos de uso.
 
 ---
 

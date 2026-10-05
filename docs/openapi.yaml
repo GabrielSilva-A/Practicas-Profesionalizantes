@@ -1,46 +1,199 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "UATRE — contrato inicial parcial",
-    "version": "0.1.0",
-    "description": "Diseño de Fase 8, no implementación. JSON es sintaxis válida de YAML. Convenciones en api-design.md. Las extensiones x-decision-pendiente identifican decisiones abiertas. Protección CSRF de operaciones mutables pendiente de arquitectura."
+    "title": "UATRE — contrato parcial de API",
+    "version": "0.2.0",
+    "description": "Contrato parcial de Fase 8. JSON es sintaxis válida de YAML. Convenciones en api-design.md. Acceso y altas públicas iniciales implementados; x-implementation-status distingue rutas ejecutables de contratos planned. Las extensiones x-decision-pendiente identifican aspectos aún abiertos. Los POST implementados exigen Origin configurado y application/json."
   },
-  "servers": [{ "url": "/api/v1" }],
-  "security": [{ "sessionCookie": [] }],
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
   "paths": {
+    "/health": {
+      "get": {
+        "operationId": "consultarSaludApi",
+        "summary": "Consultar disponibilidad del proceso de API",
+        "description": "Implementado. No consulta PostgreSQL ni requiere sesión.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "La API responde",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/db": {
+      "get": {
+        "operationId": "consultarSaludBaseDatos",
+        "summary": "Consultar disponibilidad de PostgreSQL",
+        "description": "Implementado. Ejecuta una consulta mínima sin exponer detalles de conexión.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "PostgreSQL responde",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL no está disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "iniciarSesion",
-        "summary": "Autenticar y crear sesión normal o restringida",
-        "description": "RN-150/169; UC-TRABAJADOR-001/008. No seleccionar rol desde el cliente. No implementado. Acceso futuro Continuar con Google aprobado; este login local sigue provisional hasta decidir sustitución/coexistencia y efectos sobre contraseña inicial (D-35/D-36). No describe el flujo Google.",
+        "summary": "Autenticar empresas y seccionales",
+        "description": "Implementado para EMPRESA y SECCIONAL con email y contraseña. No seleccionar rol desde el cliente. El acceso de trabajadores y Google quedan fuera de este MVP; D-35/D-36 siguen abiertas para ese actor.",
         "security": [],
-        "x-decision-pendiente": ["D-29", "D-30", "D-32", "D-33", "D-35", "D-36"],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "x-decision-pendiente": [
+          "D-29",
+          "D-30",
+          "D-35",
+          "D-36"
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": {
-            "type": "object", "additionalProperties": false,
-            "required": ["identificador", "password"],
-            "properties": {
-              "identificador": { "type": "string", "minLength": 1, "description": "Nombre propio consignado al registrar al trabajador o email; homónimos y comparación pendientes D-33. Empresa/seccional usan email. No seleccionar arbitrariamente un homónimo." },
-              "password": { "type": "string", "minLength": 1, "writeOnly": true }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "identificador",
+                  "password"
+                ],
+                "properties": {
+                  "identificador": {
+                    "type": "string",
+                    "minLength": 1,
+                    "format": "email",
+                    "description": "Email de una cuenta EMPRESA o SECCIONAL activa."
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "writeOnly": true,
+                    "description": "Máximo técnico de 72 bytes UTF-8."
+                  }
+                }
+              }
             }
-          } } }
+          }
         },
         "responses": {
           "200": {
-            "description": "Identidad de sesión; primera_vez_login=true limita el acceso al cambio obligatorio, auth/me y logout.",
+            "description": "Identidad de sesión EMPRESA/SECCIONAL. La cookie usa un identificador opaco aleatorio; el servidor persiste su hash en PostgreSQL y vence en una hora. Las altas públicas no crean sesión automáticamente.",
             "headers": {
-              "Set-Cookie": { "description": "Cookie opaca uatre_session; HttpOnly, Secure, SameSite=Strict. TTL de una hora renovable con navegación/interacción del usuario, no con polling automático. Comunicación de actividad y persistencia pendientes D-29.", "schema": { "type": "string" } },
-              "Cache-Control": { "schema": { "type": "string", "const": "no-store" } }
+              "Set-Cookie": {
+                "description": "Cookie uatre_session; HttpOnly, Secure en producción, SameSite=Strict, Path=/api/v1; vence en una hora.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
             },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/InvalidJson" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "422": { "$ref": "#/components/responses/ValidationError" },
-          "500": { "$ref": "#/components/responses/InternalError" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
@@ -49,10 +202,30 @@
         "operationId": "consultarSesion",
         "summary": "Consultar identidad de sesión normal o restringida",
         "responses": {
-          "200": { "description": "Identidad sin datos sensibles", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "200": {
+            "description": "Identidad sin datos sensibles, o data=null si no hay sesión",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
@@ -60,99 +233,2745 @@
       "post": {
         "operationId": "cerrarSesion",
         "summary": "Invalidar sesión y eliminar cookie",
-        "description": "Idempotente también sin sesión. Mecanismo CSRF pendiente; no implementado.",
+        "description": "Implementado e idempotente también sin sesión. Exige Origin permitido y application/json.",
         "security": [],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": { "description": "Sin cuerpo; cookie eliminada", "headers": { "Set-Cookie": { "description": "Expira la cookie uatre_session con mismo ámbito de creación", "schema": { "type": "string" } } } },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "500": { "$ref": "#/components/responses/InternalError" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "204": {
+            "description": "Sin cuerpo; cookie eliminada",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Expira la cookie uatre_session con mismo ámbito de creación",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/auth/password": {
+      "x-implementation-status": "planned",
+      "patch": {
+        "operationId": "cambiarPassword",
+        "summary": "Cambiar contraseña en sesión restringida (primer login)",
+        "description": "RN-169; UC-TRABAJADOR-008; UC-UATRE-003, flujo B. Requiere sesión restringida de TRABAJADOR o EMPRESA creada manualmente (primera_vez_login=true). Actualiza hash y primera_vez_login=false; renueva sesión tras éxito.",
+        "x-decision-pendiente": [
+          "D-29",
+          "D-36",
+          "A-06"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nueva_password",
+                  "confirmacion_password"
+                ],
+                "properties": {
+                  "nueva_password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "writeOnly": true,
+                    "description": "Mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un símbolo. Distinta de la temporal."
+                  },
+                  "confirmacion_password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contraseña actualizada; sesión renovada",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "ACTOR_NO_AUTORIZADO (sesión normal, no restringida)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CAMBIO_OBLIGATORIO_NO_APLICA",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/me/estado": {
+      "x-implementation-status": "planned",
       "get": {
         "operationId": "consultarEstadoPersonal",
         "summary": "Consultar condiciones del trabajador autenticado",
         "description": "REQ-TRABAJADOR-001; UC-TRABAJADOR-007. Solo TRABAJADOR con cambio obligatorio completado; ID desde sesión.",
-        "x-decision-pendiente": ["D-02", "D-04", "D-32"],
+        "x-decision-pendiente": [
+          "D-02",
+          "D-04",
+          "D-32"
+        ],
         "responses": {
-          "200": { "description": "Condiciones coexistentes y designación propia", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkerStateResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "500": { "$ref": "#/components/responses/InternalError" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "200": {
+            "description": "Condiciones coexistentes y designación propia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerStateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/seccionales": {
+      "post": {
+        "operationId": "registrarSeccional",
+        "summary": "Registrar una seccional",
+        "description": "RN-138/149/152; REQ-UATRE-001; UC-UATRE-001. Alta pública implementada; no crea sesión automática. Password requerido, hasheado con bcrypt; sin requisito adicional de longitud/composición.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "numero",
+                  "localidad",
+                  "provincia",
+                  "email",
+                  "password",
+                  "cantidad_numeros"
+                ],
+                "properties": {
+                  "numero": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "localidad": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "provincia": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Máximo técnico de 72 bytes UTF-8."
+                  },
+                  "cantidad_numeros": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647,
+                    "description": "No tiene máximo funcional en este MVP; el alta de puestos se protege con timeout en PostgreSQL."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Seccional creada con punto_rotacion=1 y sus números libres y activos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeccionalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "SECCIONAL_DUPLICADA / EMAIL_EN_USO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listarSeccionalesParaRegistro",
+        "summary": "Listar seccionales activas para el selector público",
+        "description": "RN-139; UC-UATRE-003. Solo devuelve seccionales activas con id, número, localidad y provincia; no expone email ni datos operativos.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Lista completa de seccionales activas para el selector",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeccionalPublicListResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/seccionales/me": {
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "consultarSeccionalPropia",
+        "summary": "Consultar la seccional de la sesión",
+        "description": "Solo actor SECCIONAL; identidad obtenida de la sesión. No devuelve usuarios.",
+        "responses": {
+          "200": {
+            "description": "Ficha de la seccional propia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeccionalResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/seccionales/me/cantidad-numeros": {
+      "x-implementation-status": "planned",
+      "patch": {
+        "operationId": "ajustarCantidadNumeros",
+        "summary": "Ajustar el tamaño de la lista de la propia seccional",
+        "description": "RN-152; REQ-UATRE-014; UC-UATRE-001. Solo actor SECCIONAL. Al reducir, no reasigna trabajadores ni corrige el punto de rotación automáticamente; rechaza si hay números ocupados o un punto fuera del nuevo rango.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "cantidad_numeros"
+                ],
+                "properties": {
+                  "cantidad_numeros": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tamaño de lista actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeccionalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "NUMEROS_OCUPADOS_FUERA_DE_RANGO / PUNTO_ROTACION_FUERA_DE_RANGO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/lista-rotacion/{numero}/liberar": {
+      "x-implementation-status": "planned",
+      "parameters": [
+        {
+          "name": "numero",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "liberarNumeroLista",
+        "summary": "Liberar un número de la propia seccional",
+        "description": "RN-153/154; REQ-UATRE-012; UC-UATRE-001. Solo actor SECCIONAL. Desasigna y desactiva el número, desactiva trabajador y usuario, y reinicia atrasos y sanciones. Rechaza la operación si el trabajador tiene una designación o trabajo activo.",
+        "x-decision-pendiente": [
+          "D-17"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Número liberado y desactivado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NumeroLiberadoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO para número ajeno, libre o inactivo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TRABAJADOR_CON_DESIGNACION_ACTIVA",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas/registro": {
+      "post": {
+        "operationId": "registrarEmpresa",
+        "summary": "Registrar una empresa",
+        "description": "RN-003/139; UC-UATRE-003, flujo A. Registro público implementado. La seccional debe existir y estar activa. No aceptar activa, tipo de usuario ni permisos elegidos por el cliente. No crea sesión automática. Contraseña obligatoria sin requisito adicional de longitud/composición.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nombre",
+                  "localidad",
+                  "provincia",
+                  "seccional_id",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "nombre": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "localidad": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "provincia": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "seccional_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Máximo técnico de 72 bytes UTF-8."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Empresa activa creada; sin sesión automática",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "EMAIL_EN_USO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SECCIONAL_NO_DISPONIBLE / VALIDACION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas": {
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "listarEmpresas",
+        "summary": "Listar empresas de la propia seccional",
+        "description": "Solo actor SECCIONAL y empresas de su seccional. DTO sin credenciales. Filtro activa opcional.",
+        "x-decision-pendiente": [
+          "D-32"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "activa",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "crearEmpresaPorSeccional",
+        "summary": "Dar de alta una empresa desde UATRE",
+        "description": "Solo actor SECCIONAL; seccional derivada de la sesión. El email es el identificador. El sistema genera una contraseña temporal y exige su cambio en el primer acceso antes de habilitar operaciones empresariales.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nombre",
+                  "localidad",
+                  "provincia",
+                  "email"
+                ],
+                "properties": {
+                  "nombre": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "localidad": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "provincia": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Empresa creada. La contraseña temporal se devuelve únicamente en esta respuesta al actor SECCIONAL creador.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaAltaManualResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "EMAIL_EN_USO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas/me": {
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "consultarEmpresaPropia",
+        "summary": "Consultar la propia ficha empresarial",
+        "description": "Solo actor EMPRESA; identidad obtenida de la sesión. No habilita el listado administrativo de UATRE.",
+        "x-decision-pendiente": [
+          "D-32"
+        ],
+        "responses": {
+          "200": {
+            "description": "Ficha empresarial propia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas/{empresa_id}": {
+      "parameters": [
+        {
+          "name": "empresa_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "consultarEmpresa",
+        "summary": "Consultar detalle de empresa de la propia seccional",
+        "description": "Solo actor SECCIONAL. Fuera de su seccional responde 404 genérico sin revelar existencia.",
+        "responses": {
+          "200": {
+            "description": "Ficha empresarial",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas/{empresa_id}/actividad": {
+      "parameters": [
+        {
+          "name": "empresa_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "x-implementation-status": "planned",
+      "patch": {
+        "operationId": "cambiarActividadEmpresa",
+        "summary": "Activar o desactivar una empresa",
+        "description": "UC-UATRE-003, flujo C. Solo actor SECCIONAL; verifica pertenencia. Repetir el mismo valor no produce efectos adicionales. Empresa inactiva no crea nuevos pedidos; pedidos EN_PROCESO/CUBIERTOS no se alteran y no se cancelan designaciones. Efecto sobre pedidos en cola pendiente D-20.",
+        "x-decision-pendiente": [
+          "D-20",
+          "D-32"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "activa"
+                ],
+                "properties": {
+                  "activa": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empresa actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmpresaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/trabajadores": {
+      "post": {
+        "operationId": "crearTrabajador",
+        "summary": "Registrar trabajador desde UATRE",
+        "description": "RN-140/141/151/169; REQ-UATRE-011; UC-UATRE-002. Solo actor SECCIONAL. Gmail obligatorio; validar dominio no verifica titularidad. Genera contraseña temporal aleatoria de 12 caracteres, hasheada con bcrypt y primera_vez_login=true. Trigger existente crea atraso inicial; no duplicar el efecto. Alta transaccional; credenciales temporales solo se devuelven en esta respuesta. Acceso Google y cambio inicial pendientes D-35/D-36; alta todavía provisional.",
+        "x-decision-pendiente": [
+          "A-06",
+          "D-33",
+          "D-35",
+          "D-36"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nombre",
+                  "apellido",
+                  "documento",
+                  "email",
+                  "numero_lista"
+                ],
+                "properties": {
+                  "nombre": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "apellido": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "documento": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "telefono": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Debe ser Gmail; formato/dominio no verifica titularidad."
+                  },
+                  "numero_lista": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Trabajador y usuario creados; el secreto temporal se entrega solo al actor SECCIONAL que realizó el alta",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrabajadorAltaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "DOCUMENTO_EN_USO / EMAIL_EN_USO / NUMERO_OCUPADO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "listarTrabajadores",
+        "summary": "Listar trabajadores de la propia seccional",
+        "description": "Solo actor SECCIONAL. Filtra opcionalmente por activo; orden numero_lista ascendente con ID como desempate y trabajadores sin número al final. DTO sin credenciales.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrabajadorListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/trabajadores/{trabajador_id}": {
+      "parameters": [
+        {
+          "name": "trabajador_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "consultarTrabajador",
+        "summary": "Consultar ficha de trabajador de la propia seccional",
+        "description": "Solo actor SECCIONAL y trabajadores de su ámbito. Ficha administrativa; no devuelve hash ni contraseña temporal.",
+        "responses": {
+          "200": {
+            "description": "Ficha administrativa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrabajadorAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "reactivarTrabajador",
+        "summary": "Reactivar trabajador y asignar un número libre",
+        "description": "RN-153; REQ-UATRE-012; UC-UATRE-001. Solo actor SECCIONAL. Reactiva la misma identidad y su usuario, asigna un número libre de la propia seccional y conserva contraseña e historial.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "numero_lista"
+                ],
+                "properties": {
+                  "numero_lista": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trabajador reactivado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrabajadorAdminResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO para trabajador o número fuera de la seccional",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TRABAJADOR_YA_ACTIVO / NUMERO_NO_DISPONIBLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/asistencia/hoy/abrir": {
+      "x-implementation-status": "planned",
+      "post": {
+        "operationId": "abrirAsistenciaHoy",
+        "summary": "Abrir asistencia de la jornada actual",
+        "description": "Solo SECCIONAL. Crea registros faltantes para n?meros activos con presente=false, verificado=false y cerrado=false; no modifica flags de presencia.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AsistenciaList"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "ASISTENCIA_YA_CERRADA"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/asistencia/hoy/registros/{trabajador_id}": {
+      "x-implementation-status": "planned",
+      "parameters": [
+        {
+          "name": "trabajador_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "marcarAsistenciaHoy",
+        "summary": "Marcar y verificar asistencia",
+        "description": "Solo SECCIONAL de la misma seccional. Actualiza presente y verificado=true; ANOTADO no se modifica.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "presente"
+                ],
+                "properties": {
+                  "presente": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Asistencia"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          },
+          "409": {
+            "description": "ASISTENCIA_YA_CERRADA"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/asistencia/hoy/cerrar": {
+      "x-implementation-status": "planned",
+      "post": {
+        "operationId": "cerrarAsistenciaHoy",
+        "summary": "Cerrar asistencia y procesar cola habilitada",
+        "description": "Solo SECCIONAL. Disponible desde las 07:40 con todos los registros verificados. Sincroniza flags, descuenta atrasos por ausencia y procesa la cola en una transacci?n.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AsistenciaList"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "CIERRE_ANTES_DE_HORA / REGISTROS_SIN_VERIFICAR / ASISTENCIA_YA_CERRADA"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/empresas/me/establecimientos": {
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "listarEstablecimientos",
+        "summary": "Listar establecimientos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EstablecimientoList"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          }
+        }
+      },
+      "post": {
+        "operationId": "crearEstablecimiento",
+        "summary": "Crear establecimiento",
+        "description": "Solo EMPRESA propietaria.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nombre",
+                  "direccion",
+                  "localidad",
+                  "provincia"
+                ],
+                "properties": {
+                  "nombre": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "direccion": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "localidad": {
+                    "type": "string"
+                  },
+                  "provincia": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/Establecimiento"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          },
+          "409": {
+            "description": "RECURSO_DUPLICADO"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/empresas/me/establecimientos/{establecimiento_id}/actividad": {
+      "x-implementation-status": "planned",
+      "parameters": [
+        {
+          "name": "establecimiento_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "cambiarActividadEstablecimiento",
+        "summary": "Cambiar actividad de establecimiento",
+        "description": "Rechaza la desactivaci?n si existe un pedido futuro que referencia el cat?logo.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "activo"
+                ],
+                "properties": {
+                  "activo": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Establecimiento"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          },
+          "409": {
+            "description": "CATALOGO_EN_USO_EN_PEDIDO_FUTURO"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/empresas/{empresa_id}/tareas": {
+      "x-implementation-status": "planned",
+      "get": {
+        "operationId": "listarTareas",
+        "summary": "Listar tareas",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/TareaList"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          }
+        }
+      },
+      "post": {
+        "operationId": "crearTarea",
+        "summary": "Crear tarea",
+        "description": "Solo SECCIONAL de la empresa.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nombre"
+                ],
+                "properties": {
+                  "nombre": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/Tarea"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          },
+          "409": {
+            "description": "RECURSO_DUPLICADO"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/empresas/{empresa_id}/tareas/{tarea_id}/actividad": {
+      "x-implementation-status": "planned",
+      "parameters": [
+        {
+          "name": "tarea_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "cambiarActividadTarea",
+        "summary": "Cambiar actividad de tarea",
+        "description": "Rechaza la desactivaci?n si existe un pedido futuro que referencia el cat?logo.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Debe coincidir exactamente con WEB_ORIGINS."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "activo"
+                ],
+                "properties": {
+                  "activo": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Tarea"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJson"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "RECURSO_NO_ENCONTRADO"
+          },
+          "409": {
+            "description": "CATALOGO_EN_USO_EN_PEDIDO_FUTURO"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
         }
       }
     }
   },
   "components": {
     "securitySchemes": {
-      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "uatre_session", "description": "Sesión opaca en servidor. Cookie propuesta; biblioteca no seleccionada." }
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "uatre_session",
+        "description": "Cookie opaca HttpOnly; el hash del token se persiste en PostgreSQL, TTL una hora, SameSite=Strict y Secure en producción."
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "page_size",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      }
     },
     "schemas": {
-      "SessionResponse": {
-        "type": "object", "additionalProperties": false, "required": ["data"],
-        "properties": { "data": {
-          "type": "object", "additionalProperties": false,
-          "required": ["usuario_id", "tipo", "primera_vez_login"],
-          "properties": {
-            "usuario_id": { "type": "integer", "minimum": 1 },
-            "tipo": { "type": "string", "enum": ["SECCIONAL", "EMPRESA", "TRABAJADOR"] },
-            "primera_vez_login": { "type": "boolean" }
+      "Asistencia": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trabajador_id",
+          "numero_lista",
+          "presente",
+          "verificado",
+          "cerrado",
+          "anotado"
+        ],
+        "properties": {
+          "trabajador_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "numero_lista": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "presente": {
+            "type": "boolean"
+          },
+          "verificado": {
+            "type": "boolean"
+          },
+          "cerrado": {
+            "type": "boolean"
+          },
+          "anotado": {
+            "type": "boolean"
           }
-        } }
+        }
+      },
+      "AsistenciaResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Asistencia"
+          }
+        }
+      },
+      "AsistenciaListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Asistencia"
+            }
+          }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "page",
+          "page_size",
+          "total"
+        ],
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Seccional": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "numero",
+          "localidad",
+          "provincia",
+          "cantidad_numeros",
+          "punto_rotacion",
+          "activo"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "numero": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "localidad": {
+            "type": "string"
+          },
+          "provincia": {
+            "type": "string"
+          },
+          "cantidad_numeros": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "punto_rotacion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "activo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SeccionalResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Seccional"
+          }
+        }
+      },
+      "SeccionalPublicListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "numero",
+                "localidad",
+                "provincia"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "numero": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "localidad": {
+                  "type": "string"
+                },
+                "provincia": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NumeroLiberadoResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "numero",
+              "activo",
+              "trabajador_id"
+            ],
+            "properties": {
+              "numero": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "activo": {
+                "type": "boolean",
+                "const": false
+              },
+              "trabajador_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "Empresa": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "nombre",
+          "localidad",
+          "provincia",
+          "seccional_id",
+          "activa"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "localidad": {
+            "type": "string"
+          },
+          "provincia": {
+            "type": "string"
+          },
+          "seccional_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "activa": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EmpresaResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Empresa"
+          }
+        }
+      },
+      "EmpresaAltaManualResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "empresa",
+              "credenciales_temporales"
+            ],
+            "properties": {
+              "empresa": {
+                "$ref": "#/components/schemas/Empresa"
+              },
+              "credenciales_temporales": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email",
+                  "password_temporal"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password_temporal": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "EmpresaListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Empresa"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        }
+      },
+      "TrabajadorAdmin": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "nombre",
+          "apellido",
+          "documento",
+          "activo",
+          "numero_lista"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "apellido": {
+            "type": "string"
+          },
+          "documento": {
+            "type": "string"
+          },
+          "telefono": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activo": {
+            "type": "boolean"
+          },
+          "numero_lista": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        }
+      },
+      "TrabajadorAdminResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TrabajadorAdmin"
+          }
+        }
+      },
+      "TrabajadorListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrabajadorAdmin"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        }
+      },
+      "TrabajadorAltaResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "nombre",
+              "apellido",
+              "numero_lista",
+              "credenciales_temporales"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "nombre": {
+                "type": "string"
+              },
+              "apellido": {
+                "type": "string"
+              },
+              "numero_lista": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "credenciales_temporales": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email",
+                  "password_temporal"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password_temporal": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "SessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "usuario_id",
+                  "tipo",
+                  "primera_vez_login"
+                ],
+                "properties": {
+                  "usuario_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "tipo": {
+                    "type": "string",
+                    "enum": [
+                      "SECCIONAL",
+                      "EMPRESA",
+                      "TRABAJADOR"
+                    ]
+                  },
+                  "primera_vez_login": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "WorkerStateResponse": {
-        "type": "object", "additionalProperties": false, "required": ["data"],
-        "properties": { "data": {
-          "type": "object", "additionalProperties": false,
-          "required": ["numero_lista", "presente_hoy", "presente_ayer", "anotado", "atrasos_pendientes", "turnos_sancion_pendientes", "designacion_vigente"],
-          "properties": {
-            "numero_lista": { "type": ["integer", "null"], "minimum": 1 },
-            "presente_hoy": { "type": "boolean", "description": "Significado temporal pendiente D-02/D-04" },
-            "presente_ayer": { "type": "boolean" },
-            "anotado": { "type": "boolean" },
-            "atrasos_pendientes": { "type": "integer", "minimum": 0 },
-            "turnos_sancion_pendientes": { "type": "integer", "minimum": 0 },
-            "designacion_vigente": { "anyOf": [{ "$ref": "#/components/schemas/ActiveAssignment" }, { "type": "null" }] }
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "numero_lista",
+              "presente_hoy",
+              "presente_ayer",
+              "anotado",
+              "atrasos_pendientes",
+              "turnos_sancion_pendientes",
+              "designacion_vigente"
+            ],
+            "properties": {
+              "numero_lista": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "presente_hoy": {
+                "type": "boolean",
+                "description": "Significado temporal pendiente D-02/D-04"
+              },
+              "presente_ayer": {
+                "type": "boolean"
+              },
+              "anotado": {
+                "type": "boolean"
+              },
+              "atrasos_pendientes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "turnos_sancion_pendientes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "designacion_vigente": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ActiveAssignment"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
           }
-        } }
+        }
       },
       "ActiveAssignment": {
-        "type": "object", "additionalProperties": false,
-        "required": ["id", "pedido_id", "empresa", "tarea", "establecimiento", "horario_inicio", "estado"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "pedido_id",
+          "empresa",
+          "tarea",
+          "establecimiento",
+          "horario_inicio",
+          "estado"
+        ],
         "properties": {
-          "id": { "type": "integer", "minimum": 1 },
-          "pedido_id": { "type": "integer", "minimum": 1 },
-          "empresa": { "type": "string" },
-          "tarea": { "type": "string" },
-          "establecimiento": { "type": ["string", "null"] },
-          "horario_inicio": { "type": "string", "format": "date-time" },
-          "estado": { "type": "string", "enum": ["DESIGNADO", "TRABAJANDO"] }
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pedido_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "empresa": {
+            "type": "string"
+          },
+          "tarea": {
+            "type": "string"
+          },
+          "establecimiento": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "horario_inicio": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "DESIGNADO",
+              "TRABAJANDO"
+            ]
+          }
         }
       },
       "ErrorResponse": {
-        "type": "object", "additionalProperties": false, "required": ["error"],
-        "properties": { "error": {
-          "type": "object", "additionalProperties": false, "required": ["code", "message"],
-          "properties": {
-            "code": { "type": "string" }, "message": { "type": "string" },
-            "details": { "type": "array", "items": {
-              "type": "object", "additionalProperties": false, "required": ["field", "message"],
-              "properties": { "field": { "type": "string" }, "message": { "type": "string" } }
-            } }
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "field",
+                    "message"
+                  ],
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
-        } }
+        }
+      },
+      "Establecimiento": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "nombre",
+          "direccion",
+          "localidad",
+          "provincia",
+          "activo"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "direccion": {
+            "type": "string"
+          },
+          "localidad": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provincia": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EstablecimientoResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Establecimiento"
+          }
+        }
+      },
+      "EstablecimientoListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Establecimiento"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        }
+      },
+      "Tarea": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "nombre",
+          "activo"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "activo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TareaResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Tarea"
+          }
+        }
+      },
+      "TareaListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tarea"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        }
       }
     },
     "responses": {
-      "InvalidJson": { "description": "JSON mal formado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Unauthorized": { "description": "CREDENCIALES_INVALIDAS en login o SESION_INVALIDA en consultas", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Forbidden": { "description": "CUENTA_INACTIVA, ACTOR_NO_AUTORIZADO, CAMBIO_PASSWORD_REQUERIDO o protección CSRF", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "ValidationError": { "description": "VALIDACION", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "InternalError": { "description": "ERROR_INTERNO sin detalles sensibles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Unavailable": { "description": "SERVICIO_NO_DISPONIBLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+      "InvalidJson": {
+        "description": "JSON mal formado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "El cuerpo JSON supera el límite técnico de 16 KB",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "CREDENCIALES_INVALIDAS en login o SESION_INVALIDA en consultas",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "CUENTA_INACTIVA, ACTOR_NO_AUTORIZADO, CAMBIO_PASSWORD_REQUERIDO o protección CSRF",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "VALIDACION",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "ERROR_INTERNO sin detalles sensibles",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "SERVICIO_NO_DISPONIBLE",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Asistencia": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AsistenciaResponse"
+            }
+          }
+        }
+      },
+      "AsistenciaList": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AsistenciaListResponse"
+            }
+          }
+        }
+      },
+      "Establecimiento": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EstablecimientoResponse"
+            }
+          }
+        }
+      },
+      "EstablecimientoList": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EstablecimientoListResponse"
+            }
+          }
+        }
+      },
+      "Tarea": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TareaResponse"
+            }
+          }
+        }
+      },
+      "TareaList": {
+        "description": "Respuesta exitosa",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TareaListResponse"
+            }
+          }
+        }
+      }
     }
   }
 }

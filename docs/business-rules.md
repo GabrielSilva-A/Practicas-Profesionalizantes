@@ -332,6 +332,17 @@ Cada seccional define la cantidad de números que tendrá su lista al momento de
 
 El total de números se almacena en `SECCIONALES.cantidad_numeros`.
 
+Al reducir el total:
+
+1. Se rechaza la operación si un número por encima del nuevo límite está ocupado.
+2. Se rechaza la operación si `punto_rotacion` queda fuera del nuevo rango; UATRE
+   debe ajustarlo explícitamente antes.
+3. Los números libres fuera del nuevo límite se desactivan sin borrar su fila
+   histórica.
+
+Al aumentar el total, se activan primero los números libres históricos dentro del
+nuevo rango y se crean posiciones nuevas solo cuando no existan.
+
 ## RN-153 — Liberación de número
 
 Un número se libera cuando un trabajador renuncia o es despedido. UATRE realiza esta acción manualmente desde su cuenta de seccional.
@@ -339,10 +350,17 @@ Un número se libera cuando un trabajador renuncia o es despedido. UATRE realiza
 Al liberar un número:
 1. Se actualiza `lista_rotacion.trabajador_id = NULL` (desvincula al trabajador).
 2. Se marca `activo = FALSE` (indicando que el número está inactivo).
+3. Se desactivan el trabajador y su usuario, conservando su identidad e
+   historial.
+4. Se reinician sus atrasos y sanciones pendientes.
 
 El número inactivo no será considerado en las consultas de la lista de rotación (motor y rotación ordinaria solo consultan `activo = TRUE`).
 
-El número puede ser reasignado a otro trabajador en el futuro mediante una nueva activación.
+El mismo trabajador puede reactivarse en el futuro, sin crear una identidad nueva,
+con un número libre elegido por UATRE —incluido su número liberado si se lo vuelve
+a activar—. La reactivación conserva la contraseña que tenía la cuenta.
+No se permite liberar el número mientras el trabajador tenga una designación o
+trabajo activo.
 
 ### Caso de uso asociado:
 
@@ -386,6 +404,10 @@ El cierre de asistencia deberá realizarse **manualmente por el personal autoriz
 
 El sistema proporcionará un botón "CERRAR ASISTENCIA" que solamente estará disponible después de las 07:40.
 
+Si a esa hora la asistencia aún no fue cerrada, los pedidos que dependen de esa
+actualización esperan el cierre manual; no se procesan con la última asistencia
+cerrada.
+
 ## RN-019 — Llegada tarde
 
 Una persona que llegue después del horario límite será considerada ausente a efectos del nombramiento correspondiente.
@@ -396,7 +418,10 @@ Esta regla aplica a los socios.
 
 Cuando una regla de elegibilidad requiera haber asistido el día anterior, el sistema deberá consultar el registro correspondiente a esa jornada.
 
-**Actualización:** la asistencia del día anterior se almacena en `TRABAJADORES.presente_ayer` para consultas rápidas.
+**Actualización:** la asistencia del día anterior es la última jornada cerrada,
+no necesariamente el día calendario anterior, y se almacena en
+`TRABAJADORES.presente_ayer` para consultas rápidas. Una seccional sin jornada
+cerrada anterior no habilita la rotación ordinaria.
 
 ## RN-021 — La designación excepcional no modifica la asistencia
 
@@ -414,7 +439,9 @@ El descuento por ausencia podrá ocurrir como máximo **una vez por trabajador y
 
 La asistencia se almacena de dos formas complementarias:
 
-1. **Tabla `ASISTENCIA`:** historial completo de cada jornada (fecha, presente, cerrado).
+1. **Tabla `ASISTENCIA`:** historial completo de cada jornada (fecha, presente,
+   verificado, cerrado). Un registro con `verificado=FALSE` no representa una
+   ausencia confirmada.
 2. **Flags en `TRABAJADORES`:** `presente_hoy` y `presente_ayer` para consultas rápidas del motor.
 
 Los flags se sincronizan automáticamente mediante triggers al cerrar la asistencia.
@@ -468,6 +495,9 @@ Pueden coexistir diferentes condiciones.
 - `SANCIONES` → tabla con turnos pendientes.
 - `DESIGNACIONES` → tabla con estado y relación al pedido.
 - `INHABILITACIONES` → tabla con relación trabajador-empresa.
+
+ANOTADO y presencia son condiciones independientes: marcar ANOTADO no modifica
+el valor de asistencia elegido para el trabajador.
 
 ---
 
@@ -644,7 +674,7 @@ Una sanción se cierra cuando:
 
 ## RN-159 — Sin motivo registrado
 
-La tabla `SANCIONES` no contempla un campo de motivo. Solo se registran `turnos_pendientes`, `fecha_inicio` y `fecha_fin` (ver esquema en `database-sql.md`).
+La tabla `SANCIONES` no contempla un campo de motivo. Solo se registran `turnos_pendientes`, `fecha_inicio` y `fecha_fin` (ver esquema en `BD/bd_uatre.sql`).
 
 **Actualización (consolidación Fase 4):** se precisó la redacción para reflejar exactamente el esquema implementado (no existe columna de motivo, ni siquiera opcional).
 
@@ -714,7 +744,7 @@ Solo el usuario de la seccional puede inhabilitar o rehabilitar trabajadores par
 
 El modelo de datos implementado (tabla `INHABILITACIONES`) no contempla un campo de motivo. La inhabilitación se registra únicamente como el par (`trabajador_id`, `empresa_id`) con su `fecha_inhabilitacion`, sin texto libre asociado.
 
-**Actualización (consolidación Fase 4):** esta regla reemplaza una versión anterior que preveía motivo libre en texto; se corrigió para reflejar el esquema real implementado en PostgreSQL (`database-sql.md`), que no posee dicha columna.
+**Actualización (consolidación Fase 4):** esta regla reemplaza una versión anterior que preveía motivo libre en texto; se corrigió para reflejar el esquema real implementado en PostgreSQL (`BD/bd_uatre.sql`), que no posee dicha columna.
 
 ### Caso de uso asociado:
 
@@ -749,6 +779,10 @@ Una empresa afiliada deberá asociarse con una seccional/localidad.
 ## RN-052 — Múltiples establecimientos
 
 Una empresa podrá registrar una o múltiples direcciones o establecimientos.
+La empresa administra sus propios establecimientos.
+
+No se puede desactivar un establecimiento mientras exista un pedido futuro que
+lo referencie.
 
 ## RN-053 — Pedido con múltiples establecimientos
 
@@ -761,6 +795,9 @@ Cuando una empresa posea varias ubicaciones, deberá indicar en el pedido a cuá
 ## RN-054 — Tareas configurables por empresa
 
 El personal autorizado de UATRE podrá configurar los tipos de trabajo correspondientes a cada empresa.
+
+No se puede desactivar una tarea mientras exista un pedido futuro que la
+referencie.
 
 La configuración de tareas no determina una lista de origen, ya que el sistema trabaja con una única lista de socios por seccional.
 
@@ -824,8 +861,11 @@ SINO:
 ```
 SI fecha_pedido = HOY:
     SI ya pasó 07:40 hs:
-        → PROCESAR INMEDIATO (RN-065)
-        Razón: La actualización válida del día ya ocurrió
+        SI asistencia de HOY está cerrada:
+            → PROCESAR INMEDIATO (RN-065)
+        SINO:
+            → ENVIAR A COLA (esperar cierre manual)
+        Razón: La actualización válida solo existe tras el cierre real
     SINO:
         SI horario_pedido < 07:40 hs:
             → PROCESAR INMEDIATO (RN-063)
@@ -1008,9 +1048,12 @@ Cuando el motor determine que un socio debe cubrir un puesto y cumpla las condic
 - quedará DESIGNADO automáticamente para ese pedido;
 - quedará indisponible para otra designación mientras la designación continúe vigente.
 
-## RN-082 — Notificación de la designación
+## RN-082 — Información de la designación
 
-Cuando un trabajador quede DESIGNADO, el sistema deberá informarle la designación.
+Cuando un trabajador quede DESIGNADO, el sistema mostrará la designación en las
+vistas correspondientes. **D-26 (consolidada):** en esta etapa no se envían
+notificaciones; las designaciones y las faltas de cobertura se informan
+exclusivamente en las vistas.
 
 ## RN-083 — Trabajador designado que informa previamente que no podrá concurrir
 
@@ -1419,6 +1462,8 @@ del trabajador finalmente designado ni el detalle de las designaciones individua
 |-------|-----------|
 | `SECCIONALES` | Sedes UATRE |
 | `EMPRESAS` | Empresas afiliadas |
+| `ESTABLECIMIENTOS` | Lugares de trabajo administrados por una empresa |
+| `TAREAS_EMPRESA` | Tipos de trabajo configurados por empresa |
 | `TRABAJADORES` | Socios con flags de asistencia y anotado |
 | `USUARIOS` | Usuarios centralizados (seccional, empresa, trabajador) |
 | `LISTA_ROTACION` | Números fijos por seccional |
@@ -1430,6 +1475,9 @@ del trabajador finalmente designado ni el detalle de las designaciones individua
 | `COLA_PEDIDOS` | Pedidos que esperan procesamiento |
 | `DESIGNACIONES` | Asignación de trabajadores a pedidos |
 | `PEDIDO_HISTORIAL` | Foto del pedido al cierre de jornada |
+
+> **C-05 subsanada (2026-10-02):** lista completa con las 15 tablas de
+> `BD/bd_uatre.sql`. Las migraciones de Prisma añaden además `sesiones`.
 
 ## 33.2 Estructura detallada
 
@@ -1474,6 +1522,7 @@ seccional_id FK NULL
 empresa_id FK NULL
 trabajador_id FK NULL
 activo BOOLEAN DEFAULT TRUE
+primera_vez_login BOOLEAN DEFAULT FALSE
 fecha_creacion TIMESTAMP
 
 
@@ -1491,6 +1540,7 @@ id PK
 trabajador_id FK
 fecha DATE
 presente BOOLEAN
+verificado BOOLEAN DEFAULT FALSE
 cerrado BOOLEAN DEFAULT FALSE
 UNIQUE(trabajador_id, fecha)
 
@@ -1525,9 +1575,9 @@ seccional_id FK
 fecha DATE
 horario_inicio TIME
 cant_requerida INTEGER
-tarea VARCHAR
-establecimiento VARCHAR
-estado VARCHAR
+tarea_id FK (TAREAS_EMPRESA)
+establecimiento_id FK NULL (ESTABLECIMIENTOS)
+estado VARCHAR CHECK (PENDIENTE | EN_PROCESO | CUBIERTO | NO_CUBIERTO | CANCELADO)
 fecha_creacion TIMESTAMP
 
 
@@ -1586,14 +1636,17 @@ fecha_cierre_jornada TIMESTAMP
 | # | Trigger | Función |
 |---|---------|---------|
 | 1 | `trg_sync_presente_flags` | Sincroniza `presente_hoy` y `presente_ayer` al cerrar asistencia |
-| 2 | `trg_reset_presente_hoy` | Resetea `presente_hoy` al crear asistencia nueva |
-| 3 | `trg_crear_atraso_inicial` | Crea registro en `atrasos` al insertar trabajador |
-| 4 | `trg_gestionar_fecha_primer_atraso` | Setea/resetea `fecha_primer_atraso` |
-| 5 | `trg_descontar_atraso_al_designar` | Descuenta 1 atraso al designar |
-| 6 | `trg_gestionar_sancion_al_llegar_a_cero` | Marca `fecha_fin` cuando sanción llega a 0 |
-| 7 | `trg_paso_a_trabajando` | Calcula `horario_fin` (+12h) al pasar a TRABAJANDO |
-| 8 | `trg_liberar_designacion` | Marca `horario_fin` al finalizar |
-| 9 | `trg_descuento_atraso_ausencia` | Descuenta 1 atraso si AUSENTE + atrasos al cerrar asistencia |
+| 2 | `trg_crear_atraso_inicial` | Crea registro en `atrasos` al insertar trabajador |
+| 3 | `trg_gestionar_fecha_primer_atraso` | Setea/resetea `fecha_primer_atraso` |
+| 4 | `trg_descontar_atraso_al_designar` | Descuenta 1 atraso al designar |
+| 5 | `trg_gestionar_sancion_al_llegar_a_cero` | Marca `fecha_fin` cuando sanción llega a 0 |
+| 6 | `trg_paso_a_trabajando` | Calcula `horario_fin` (+12h) al pasar a TRABAJANDO |
+| 7 | `trg_liberar_designacion` | Marca `horario_fin` al finalizar |
+| 8 | `trg_descuento_atraso_ausencia` | Descuenta 1 atraso si AUSENTE + atrasos al cerrar asistencia |
+| 9 | `trg_decidir_procesamiento_pedido` | Decide cola vs. inmediato al insertar pedido (RN-063) |
+
+Nota (A-28): el antiguo `trg_reset_presente_hoy` fue eliminado; los flags se
+sincronizan solo al cierre (D-02).
 
 ---
 
@@ -1604,7 +1657,8 @@ fecha_cierre_jornada TIMESTAMP
 Antes de permitir que UATRE cierre la asistencia, el sistema deberá verificar que:
 
 - Todos los números activos de la lista (`activo = TRUE`) tengan un registro en ASISTENCIA para la jornada actual.
-- Todos esos registros tengan un estado definido: `presente = TRUE` o `presente = FALSE`.
+- Todos esos registros estén marcados como `verificado = TRUE`; recién entonces
+  `presente = TRUE` o `presente = FALSE` representa un estado definido.
 
 Si algún número no ha sido verificado (su registro de asistencia está sin marcar), el botón "CERRAR ASISTENCIA" deberá permanecer deshabilitado.
 
@@ -1637,14 +1691,16 @@ El cierre de asistencia a las 07:40 se evalúa en hora Argentina local.
 
 ## RN-169 — Cambio obligatorio de contraseña en primer login
 
-Cuando un trabajador accede al sistema por primera vez con la contraseña temporal generada en su registro (UC-UATRE-002):
+Cuando un trabajador o una empresa dada de alta manualmente por UATRE accede
+por primera vez con la contraseña temporal generada en su registro
+(UC-UATRE-002 o UC-UATRE-003, flujo B):
 
 1. **El sistema detecta primer login:**
    - Consulta campo `primera_vez_login` o similar en tabla USUARIOS
    - Si no existe esta validación en BD, debe implementarse
 
 2. **El sistema obliga cambio de contraseña:**
-   - Trabajador NO puede acceder a ninguna funcionalidad
+   - El actor NO puede acceder a ninguna funcionalidad operativa
    - Se presenta pantalla OBLIGATORIA de cambio de contraseña
    - No existe opción "skip" o "recordar después"
    - No permite navegar a otra sección
@@ -1656,27 +1712,28 @@ Cuando un trabajador accede al sistema por primera vez con la contraseña tempor
 
 4. **Flujo:**
    ```
-   Trabajador accede con email + password temporal
+   Actor accede con email + password temporal
        ↓
    Sistema verifica: ¿Primera vez login?
        ↓ SÍ
    Presentar pantalla obligatoria de cambio
-   Trabajador ingresa nueva contraseña
+   Actor ingresa nueva contraseña
    Sistema valida y actualiza USUARIOS.password_hash
    Sistema marca USUARIOS.primera_vez_login = FALSE
        ↓
-   Trabajador accede al sistema normalmente
+   Actor accede al sistema normalmente
    ```
 
 5. **Postcondiciones:**
    - USUARIOS.password_hash: actualizado con nueva contraseña
    - USUARIOS.primera_vez_login: FALSE
-   - Trabajador puede usar nueva contraseña en siguientes accesos
+   - El actor puede usar la nueva contraseña en siguientes accesos
    - Contraseña temporal queda invalidada
 
 ### Regla asociada:
 
 - RN-140: Registro de un trabajador (UATRE crea trabajador)
+- UC-UATRE-003, flujo B: Alta manual de empresa
 
 ### Casos de uso asociados:
 
@@ -1686,15 +1743,16 @@ Cuando un trabajador accede al sistema por primera vez con la contraseña tempor
 
 # 34. Diagramas de flujo
 
-Los diagramas de flujo del sistema están documentados en archivos separados y cubren:
+Los diagramas existentes en `docs/` son cuatro:
 
-1. **Registro de actores** (seccional, empresa, trabajador).
-2. **Toma de asistencia** (cuadrícula, cierre, disparo del motor).
-3. **Gestión de pedidos** (creación, cola, procesamiento).
-4. **Motor de asignación** (atrasados, rotación, cobertura excepcional).
-5. **Cobertura excepcional** (3 etapas).
-6. **Pizarrón digital** (visualización por rol).
-7. **Historial y reportes** (consultas históricas).
+1. **`diagrama-motor.md`** — motor de asignación (atrasados, rotación,
+   cobertura excepcional). ⚠️ C-04: omite ANOTADO y sanciones.
+2. **`diagrama-asistencia.md`** — toma de asistencia y cierre.
+3. **`diagrama-cola-vs-inmediato.md`** — gestión de pedidos (cola vs inmediato).
+4. **`diagrama-ER.md`** — modelo entidad-relación.
+
+Sin diagrama propio (aún no diseñados): registro de actores, pizarrón digital
+e historial/reportes.
 
 ---
 

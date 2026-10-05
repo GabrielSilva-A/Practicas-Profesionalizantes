@@ -27,7 +27,7 @@ Antes de implementar, consultar ambos documentos.
 
 1. **UATRE:** Personal autorizado de una seccional.
 2. **Empresa:** Empresa afiliada que solicita personal.
-3. **Trabajador:** Socio o changa participante de la lista.
+3. **Trabajador:** Socio participante de la lista.
 
 ---
 
@@ -53,27 +53,24 @@ Antes de implementar, consultar ambos documentos.
 - Procesa pedidos automáticamente
 - Fase 1: Atrasados elegibles
 - Fase 2: Rotación ordinaria
-- Fase 3: Cobertura excepcional (3 etapas)
-- **UC asociado:** UC-UATRE-004 (Registrar asistencia y cierre) ✅ — referenciado como consecuencia automática del cierre
-- **UC asociado:** UC-UATRE-004 (Registrar asistencia y cierre) — se dispara automáticamente al cerrar asistencia, no tiene UC propio porque UATRE no lo invoca directamente
+- Cobertura excepcional (3 etapas): **MANUAL** — el motor se detiene tras la
+  rotación y UATRE autoriza cada etapa (D-06 consolidada)
+- **UC asociado:** UC-UATRE-004 (Registrar asistencia y cierre) ✅ — se dispara automáticamente al cerrar asistencia; no tiene UC propio porque UATRE no lo invoca directamente
 
 ## REQ-UATRE-005: Override de rotación
 - Definir manualmente el punto de inicio de rotación
 - **UC asociado:** UC-UATRE-005 (Override de rotación) ✅
-- **UC asociado:** UC-UATRE-005 (Override de rotación)
 
 ## REQ-UATRE-006: Inhabilitar/rehabilitar
 - Inhabilitar trabajador para empresa específica
 - Solo afecta futuras designaciones
 - **UC asociado:** UC-UATRE-006 (Inhabilitar/Rehabilitar trabajador) ✅
-- **UC asociado:** UC-UATRE-006 (Inhabilitar/Rehabilitar trabajador)
 
 ## REQ-UATRE-007: Aplicar sanción
 - Cantidad de turnos, motivo opcional
-- Bloquea desig nación hasta completar sanción
+- Bloquea designación hasta completar sanción
 - **UC asociado:** UC-UATRE-007 (Aplicar sanción) ✅
 - **Nota:** el esquema real no contempla campo de motivo (ver RN-159 corregida); "motivo opcional" aquí queda obsoleto
-- **UC asociado:** UC-UATRE-007 (Aplicar sanción)
 
 ## REQ-UATRE-008: Ver pizarrón actual
 - Pedidos en curso: empresa, cantidad, estado, designados
@@ -84,7 +81,10 @@ Antes de implementar, consultar ambos documentos.
 - **UC asociado:** UC-UATRE-009 (Historial de pizarrón) ✅
 
 ## REQ-UATRE-010: Registrar empresa
-- Nombre, localidad, provincia, seccional, email, contraseña
+- Nombre, localidad, provincia y email; la seccional se obtiene de la sesión.
+- El sistema genera una contraseña temporal y UATRE entrega las credenciales
+  usando el email como identificador. La empresa debe cambiarla obligatoriamente
+  en su primer acceso.
 - **UC asociado:** UC-UATRE-003 (Gestionar empresas) ✅
 - **Nota:** este alta manual por UATRE coexiste con el autoregistro de la empresa descripto en RN-003/RN-139 (business-rules.md). Ambas vías son válidas.
 
@@ -97,6 +97,11 @@ Antes de implementar, consultar ambos documentos.
 ## REQ-UATRE-012: Liberar número
 - Marca trabajador_id = NULL, activo = FALSE
 - Número inactivo no entra en rotaciones futuras
+- Desactiva al trabajador y su usuario, conserva identidad e historial, y
+  reinicia atrasos y sanciones pendientes.
+- Rechaza la liberación si el trabajador tiene una designación o trabajo activo.
+- La misma identidad puede reactivarse sobre un número libre elegido por UATRE,
+  conservando su contraseña anterior.
 - **UC asociado:** UC-UATRE-001 (Administrar seccional) ✅
 
 ## REQ-UATRE-013: Override puntual de asignación
@@ -105,6 +110,13 @@ Antes de implementar, consultar ambos documentos.
 - Sin auditoría específica del override (RN-128); el historial conserva únicamente el resultado final resumido del pedido (RN-165)
 - **UC asociado:** UC-UATRE-010 (Override puntual de asignación) ✅
 - **Nota:** requerimiento agregado en esta actualización para cubrir RN-126, que no tenía REQ ni UC asignado previamente
+
+## REQ-UATRE-014: Ajustar cantidad de números
+- UATRE ajusta la cantidad de números de su propia seccional.
+- Al reducir, rechaza si existen números ocupados o si el punto de rotación queda
+  fuera del nuevo rango; no reasigna trabajadores ni ajusta el punto automáticamente.
+- Conserva filas históricas: desactiva los números libres fuera del nuevo límite.
+- **UC asociado:** UC-UATRE-001 (Administrar seccional) ✅
 
 ---
 
@@ -130,6 +142,8 @@ Antes de implementar, consultar ambos documentos.
 - NO ver identidad de trabajadores ni números
 - **UC asociado:** UC-EMPRESA-002 (Ver estado del pedido) ✅
 - **UC asociado:** UC-EMPRESA-004 (Ver historial de pedidos propios) ✅ — amplía la consulta a pedidos de jornadas cerradas
+- **⚠️ D-27 (PENDIENTE DE DISEÑO):** la lista de estados visibles aún no fue
+  confirmada; verificar contra `decisiones-pendientes.md` antes de implementar.
 
 ---
 
@@ -182,6 +196,8 @@ Antes de implementar, consultar ambos documentos.
 - Pedidos completados salen del pizarrón
 - Pedidos sin cubrir se transfieren al nuevo día
 - **Sin actor humano directo.** Documentado como flujo automático dentro de UC-TRABAJADOR-002 (Ver pizarrón) y UC-UATRE-008 (Ver pizarrón actual)
+- **⚠️ D-09 (PENDIENTE DE DISEÑO):** el vencimiento/transferencia de pedidos
+  sin cubrir requiere confirmación; verificar `decisiones-pendientes.md`.
 
 ## REQ-SISTEMA-004: Procesar cola FIFO
 - Al cerrar asistencia o en job programado
@@ -197,6 +213,8 @@ Antes de implementar, consultar ambos documentos.
 - Actualiza cada 30 segundos
 - Se congela despues de cierre asistencia (07:40)
 - **UC asociado:** UC-TRABAJADOR-002 (Ver pizarrón) ✅ — ya referenciado en ese documento
+- **⚠️ D-15 (PENDIENTE DE DISEÑO):** congelar vs. mantener dinámico el
+  pizarrón después del cierre; verificar `decisiones-pendientes.md`.
 
 ---
 

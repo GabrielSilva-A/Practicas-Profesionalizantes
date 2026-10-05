@@ -1,10 +1,10 @@
 # Diseño de API — UATRE
 
-**Fase:** 8 — EN PROCESO
+**Fase:** 8 — EN PROCESO; acceso y registros iniciales implementados
 
 **Fecha:** 2026-10-01
 
-**Estado:** Diseño inicial; no es una API implementada
+**Estado:** Implementación parcial; acceso y registros iniciales conectados a PostgreSQL. Las vistas principales siguen pendientes.
 
 ## 1. Alcance y fuentes
 
@@ -16,7 +16,7 @@ Decisiones y bloqueos: [decisiones-pendientes.md](./decisiones-pendientes.md).
 
 Las convenciones HTTP siguientes son propuestas de diseño de esta fase, no nuevas
 reglas de negocio. Los contratos con dudas identificadas son provisionales.
-El [openapi.yaml](./openapi.yaml) cubre solo el subconjunto indicado en sección 7.
+El [openapi.yaml](./openapi.yaml) formaliza el contrato parcial descrito en sección 7.
 La base mínima se documenta en [architecture.md](./architecture.md); Fase 7 está
 EN CONSOLIDACIÓN, no completada. Bibliotecas de sesión/jobs y otras precisiones
 siguen pendientes.
@@ -75,6 +75,7 @@ Los códigos de error son estables; los mensajes son descriptivos, no lógica de
 | 201 | Recurso creado. |
 | 204 | Acción exitosa sin cuerpo, por ejemplo logout. |
 | 400 | JSON mal formado. |
+| 413 | Cuerpo JSON superior al límite técnico de 16 KB. |
 | 401 | Sin sesión válida o credenciales inválidas. |
 | 403 | Actor no autorizado o cambio obligatorio pendiente. |
 | 404 | Recurso inexistente o fuera del ámbito autorizado, sin revelar su existencia. |
@@ -105,7 +106,11 @@ Base documental UC-TRABAJADOR-001: bcrypt, cookie HttpOnly/Secure/SameSite=Stric
 TTL de una hora. Las decisiones posteriores del usuario eliminan el bloqueo por
 intentos fallidos y establecen renovación con actividad. JWT no forma parte del diseño aprobado.
 
-- Propuesta: cookie opaca `uatre_session`; su almacenamiento y biblioteca quedan pendientes.
+- Sesión implementada para EMPRESA y SECCIONAL: identificador aleatorio opaco en
+  cookie `uatre_session`, hash SHA-256 del identificador guardado en PostgreSQL,
+  vencimiento a una hora y cookie HttpOnly/SameSite=Strict. `Secure` se activa
+  en producción. La sesión no se renueva por consultas automáticas; renovación
+  por interacción queda pendiente para las vistas protegidas.
 - La cookie no expone contraseñas ni un rol que el cliente pueda modificar.
 - HTTPS en entorno operativo. Arquitectura de mismo origen propuesta para cliente/API;
   en desarrollo Vite redirige `/api` hacia Express por proxy, según architecture.md.
@@ -125,7 +130,9 @@ intentos fallidos y establecen renovación con actividad. JWT no forma parte del
   reintentos automáticos y otros procesos en segundo plano no acreditan esa actividad.
   Precisar alcance por actor y cómo comunica el cliente la actividad (D-29).
   No renovar una sesión ya vencida; exige nuevo login.
-- D-29 a D-33 conservan precisiones pendientes de sesión, cuentas e identificación.
+- D-29 conserva pendiente la renovación de sesión por actividad. D-32 mantiene
+  pendiente el acceso a vistas/datos históricos de entidades inactivas; el
+  comportamiento de login aprobado en A-19 ya está implementado.
 - Recuperación vía email queda para implementación futura (D-34), sin endpoint
   definido todavía. D-21 resuelta: mínimo 8 caracteres, mayúscula, minúscula,
   número y símbolo obligatorios para la nueva contraseña.
@@ -142,39 +149,55 @@ intentos fallidos y establecen renovación con actividad. JWT no forma parte del
 
 ### POST /auth/login
 
-**Fuentes:** RN-150/169, UC-TRABAJADOR-001 y 008. Acceso centralizado por tipo;
-políticas exactas de seccional/empresa requieren D-29 y D-32.
+**Fuentes:** RN-150/169, UC-TRABAJADOR-001 y 008. En este MVP se autentican
+cuentas EMPRESA y SECCIONAL; A-19 define el tratamiento de cuentas/entidades
+inactivas para el login. El endpoint de renovación por actividad (D-29) y los
+permisos sobre vistas/datos posteriores siguen pendientes de diseño; D-32 está
+consolidada.
 
-- Público. Entrada propuesta: `identificador`, `password`, ambos requeridos;
-  identificador permite nombre o email para trabajador. No permite seleccionar rol.
-- Nombre es el nombre propio consignado al registrar al trabajador, no alias único;
-  tratamiento de homónimos/comparación pendiente D-33. Alta por UATRE, no autorregistro.
-  Acceso de empresa/seccional conserva email documentado. No crear columna de alias SQL.
-- Verifica identidad, bcrypt, cuenta activa y primer login; sin bloqueo por fallos.
-- 200: cookie + `data: { usuario_id, tipo, primera_vez_login }`.
+- Público. Implementado para las cuentas EMPRESA y SECCIONAL. Entrada:
+  `identificador` (email), `password`, ambos requeridos; el identificador es
+  exclusivamente el email (D-33 consolidada). No permite seleccionar rol.
+- No se habilita login local de trabajadores: cuando se implemente, Google será
+  el único acceso de trabajadores (D-35 consolidada). Alta por UATRE, no
+  autorregistro. Acceso de empresa/seccional usa email. No crear columna de
+  alias SQL.
+- Verifica identidad, bcrypt, cuenta activa y sin bloqueo por fallos.
+- 200: cookie + `data: { usuario_id, tipo, primera_vez_login: false }`.
   Primer login devuelve sesión restringida y no habilita otros módulos.
+- La implementación actual solo autentica cuentas EMPRESA y SECCIONAL sin marca
+  de primer acceso; devuelve `primera_vez_login: false`. La restricción para
+  EMPRESA creada manualmente por UATRE se aplicará junto con la migración y el
+  contrato de cambio de contraseña previstos en A-23.
 - 401 `CREDENCIALES_INVALIDAS`: mensaje genérico para identificador/contraseña incorrectos.
 - 403 `CUENTA_INACTIVA`; 422 `VALIDACION`. No hay respuesta INTENTOS_EXCEDIDOS.
-- No devolver hash ni contraseña. Persistencia de auditoría pendiente D-30.
-- **Provisional:** D-29, D-30, D-32, D-33, D-35 y D-36. Google está aprobado como
-  modalidad futura; aclarar coexistencia/sustitución antes de cerrar login local.
+- No devolver hash ni contraseña. No se guarda auditoría de login en esta etapa
+  (D-30 consolidada).
+- **Pendiente:** D-29 (endpoint de renovación por interacción) y D-36
+  (vinculación de la identidad Google con el alta de UATRE). D-30, D-33 y D-35
+  están consolidadas. Usuario desactivado no puede autenticarse; se permite
+  login de cuentas activas aunque la empresa o seccional asociada esté inactiva.
+  Google es la modalidad futura única de acceso de trabajador (D-35).
 
 ### GET /auth/me
 
 - Sesión normal o restringida. 200 con el mismo DTO de identidad de login.
-- 401 `SESION_INVALIDA` cuando expira/no existe.
+- Implementado: 200 con `data: null` cuando no hay una sesión válida; con una
+  sesión válida devuelve la identidad de acceso permitida en esta etapa.
 - Consulta de solo lectura; no devuelve email, documento ni datos de otras cuentas.
 
 ### POST /auth/logout
 
-- Invalida sesión y borra cookie. 204 sin cuerpo, también si no había sesión vigente.
+- Implementado: invalida sesión y borra cookie. 204 sin cuerpo, también si no
+  había sesión vigente.
 - No modifica al trabajador, su asistencia o su designación.
 
 ### PATCH /auth/password
 
-**Fuentes:** RN-169; UC-TRABAJADOR-008.
+**Fuentes:** RN-169; UC-TRABAJADOR-008; UC-UATRE-003, flujo B.
 
-- Contrato inicial exclusivo para cambio obligatorio de TRABAJADOR.
+- Contrato inicial para el cambio obligatorio de TRABAJADOR y de EMPRESA creada
+  manualmente por UATRE.
 - Entrada: `nueva_password`, `confirmacion_password`.
 - Requiere sesión restringida; coincidencia, mínimo 8 caracteres, al menos una
   mayúscula, una minúscula, un número y un símbolo; distinta de temporal.
@@ -192,10 +215,12 @@ políticas exactas de seccional/empresa requieren D-29 y D-32.
 
 **Fuentes:** RN-138, RN-149, RN-152; REQ-UATRE-001; UC-UATRE-001.
 
-- Público, alta inicial documentada; no inventar aprobación por superadmin.
+- Público, alta inicial implementada; no inventar aprobación por superadmin.
 - Entrada: `numero`, `localidad`, `provincia`, `email`, `password`, `cantidad_numeros`.
 - Número/email únicos; cantidad entera >0; campos requeridos según UC.
 - Transacción: seccional con punto 1, N números libres y activos, usuario SECCIONAL.
+  Las filas de rotación se insertan en PostgreSQL mediante `generate_series`;
+  no se fijó un máximo de negocio. El statement tiene timeout de seguridad.
 - 201: `{ id, numero, localidad, provincia, cantidad_numeros, punto_rotacion, activo }`.
 - 409 `SECCIONAL_DUPLICADA` / `EMAIL_EN_USO`; 422 `VALIDACION`.
 - No crea sesión automática: UC dirige a login. Política de password de alta
@@ -204,30 +229,93 @@ políticas exactas de seccional/empresa requieren D-29 y D-32.
 ### GET /seccionales — selector de registro
 
 - Público; lista únicamente `{ id, numero, localidad, provincia }` de seccionales activas.
-- 200 con lista paginada; no publicar email ni datos operativos. El selector debe
-  poder obtener todas las páginas. Fuentes: RN-139; UC-UATRE-003.
+- 200 con `{ data: [...] }` y la lista completa de seccionales activas; no publicar
+  email ni datos operativos. Este endpoint de selector no pagina en el MVP.
+  Fuentes: RN-139; UC-UATRE-003.
 
 ### GET /seccionales/me
 
 - SECCIONAL; identidad desde sesión. 200 con DTO de seccional anterior, sin usuarios.
-- 401/403; sin cambios de datos. Configurar tamaño de lista queda bloqueado por D-18.
+- 401/403; sin cambios de datos.
+
+### PATCH /seccionales/me/cantidad-numeros
+
+**Fuentes:** RN-152; REQ-UATRE-014; UC-UATRE-001; A-26.
+
+- SECCIONAL; entrada `{ cantidad_numeros }`. Requiere Origin permitido y JSON.
+- Al aumentar, activa primero números libres históricos y crea posiciones nuevas
+  solo si son necesarias. Al reducir, desactiva posiciones libres fuera del
+  límite sin borrar sus filas.
+- Rechaza sin efectos si hay números ocupados por encima del nuevo límite
+  (`NUMEROS_OCUPADOS_FUERA_DE_RANGO`) o si el punto de rotación quedaría fuera
+  (`PUNTO_ROTACION_FUERA_DE_RANGO`). UATRE debe resolverlos explícitamente.
+- 200 con DTO de seccional actualizado; 422 `VALIDACION`; 401/403.
+
+### POST /lista-rotacion/{numero}/liberar
+
+**Fuentes:** RN-153/154; REQ-UATRE-012; UC-UATRE-001; A-24.
+
+- SECCIONAL; el número y el trabajador se buscan exclusivamente dentro de la
+  seccional de la sesión. Requiere Origin permitido y un cuerpo JSON vacío.
+- Precondiciones: número activo y ocupado; el trabajador asociado no tiene
+  designaciones en `DESIGNADO` o `TRABAJANDO`.
+- Transacción: desasignar y desactivar el número; desactivar trabajador y usuario;
+  reiniciar atrasos (`cantidad=0`, sin primer atraso) y sanciones (sin turnos ni
+  sanción activa). Conserva las filas y el historial; no borra identidades.
+- 200: `{ numero, activo: false, trabajador_id: null }`; 404 si el número no
+  pertenece a la seccional o no está activo/ocupado; 409
+  `TRABAJADOR_CON_DESIGNACION_ACTIVA` si existe una designación o trabajo activo.
+- La reactivación no crea un trabajador nuevo porque documento y email son únicos
+  globales; se diseña como operación separada.
+
+### POST /trabajadores/{trabajador_id}/reactivar
+
+**Fuentes:** RN-153; REQ-UATRE-012; UC-UATRE-001; A-25.
+
+- SECCIONAL; entrada `{ numero_lista }`. El trabajador y el número se buscan
+  únicamente en la seccional de la sesión.
+- Precondiciones: trabajador y usuario inactivos; número libre. UATRE puede
+  elegir cualquier número libre, incluido uno previamente liberado e inactivo.
+- Transacción: activar trabajador y usuario; activar el número y vincularlo al
+  trabajador. Conserva identidad, historial, contraseña y estado de primer
+  acceso existente; no genera ni entrega credenciales.
+- 200: ficha administrativa del trabajador reactivado; 404 si el trabajador o
+  número no pertenecen a la seccional; 409 `TRABAJADOR_YA_ACTIVO` o
+  `NUMERO_NO_DISPONIBLE`.
 
 ### POST /empresas/registro
 
 **Fuentes:** RN-003/139; UC-UATRE-003, flujo A.
 
-- Público. Entrada: `nombre`, `localidad`, `provincia`, `seccional_id`, `email`, `password`.
+- Público, implementado. Entrada: `nombre`, `localidad`, `provincia`,
+  `seccional_id`, `email`, `password`.
 - Seccional existente y activa, email único. Transacción empresa activa + usuario EMPRESA.
 - 201: `{ id, nombre, localidad, provincia, seccional_id, activa }`; sin sesión automática.
 - 409 `EMAIL_EN_USO`; 422 `SECCIONAL_NO_DISPONIBLE` / `VALIDACION`.
 - No aceptar `activa`, tipo de usuario ni permisos elegidos por el cliente.
-- Política de password empresarial no especificada; contrato provisional.
+- Política de contraseña empresarial/seccional aprobada para este MVP: campo
+obligatorio, sin regla adicional de longitud o composición; bcrypt y límite
+técnico de 72 bytes por compatibilidad segura. El parser JSON también limita los
+cuerpos a 16 KB. No aplica a trabajadores.
 
 ### POST /empresas — alta por UATRE
 
-- SECCIONAL; mismo conjunto de datos empresariales, seccional desde sesión.
-- No fijar todavía campos de contraseña ni respuesta de credenciales: **D-31**.
-- Transacción empresa + usuario. 201, 409 `EMAIL_EN_USO`, 422 `VALIDACION`, 401/403.
+**Fuentes:** REQ-UATRE-010; UC-UATRE-003, flujo B; RN-169; A-23.
+
+- SECCIONAL; entrada `nombre`, `localidad`, `provincia`, `email`; la seccional
+  se deriva exclusivamente de la sesión. No acepta contraseña, `seccional_id`,
+  `activa`, tipo ni permisos del cliente.
+- Transacción: empresa activa, usuario EMPRESA con el email como identificador,
+  contraseña temporal aleatoria de 12 caracteres hasheada con bcrypt y
+  `primera_vez_login=TRUE`. El secreto se devuelve una única vez al creador con
+  `Cache-Control: no-store`; no se persiste ni se incluye en consultas posteriores.
+- La sesión del primer acceso queda restringida al cambio de contraseña y logout;
+  la empresa no crea pedidos hasta completarlo.
+- 201: `{ empresa, credenciales_temporales: { email, password_temporal } }`;
+  409 `EMAIL_EN_USO`; 422 `VALIDACION`; 401/403. Requiere Origin permitido y JSON.
+- **Pendiente de implementación:** migración de `primera_vez_login` para EMPRESA,
+  sesión restringida y ruta de cambio de contraseña. D-32 sigue aplicando luego
+  del acceso para empresas inactivas.
 
 ### GET /empresas y GET /empresas/{empresa_id}
 
@@ -244,6 +332,52 @@ políticas exactas de seccional/empresa requieren D-29 y D-32.
 - 200 con DTO empresarial; repetir mismo valor no produce nuevos efectos.
 - Empresa inactiva no crea nuevos pedidos. Pedidos EN_PROCESO/CUBIERTOS no se alteran.
 - **Provisional:** pedidos en cola D-20 y acceso/sesiones D-32; no cancelar designaciones.
+
+### Catálogos empresariales
+
+**Fuentes:** RN-002, RN-052 a RN-054; A-27.
+
+- EMPRESA administra solo sus establecimientos mediante
+  `GET/POST /empresas/me/establecimientos` y
+  `PATCH /empresas/me/establecimientos/{establecimiento_id}/actividad`.
+  Las altas reciben `nombre`, `direccion`, `localidad` y `provincia`; no aceptan
+  `empresa_id` ni `activo` elegido por el cliente.
+- SECCIONAL administra las tareas de empresas de su ámbito mediante
+  `GET/POST /empresas/{empresa_id}/tareas` y
+  `PATCH /empresas/{empresa_id}/tareas/{tarea_id}/actividad`. El alta recibe
+  únicamente `nombre`; no acepta empresa de otra seccional ni `activo` elegido
+  por el cliente.
+- Listados devuelven solo sus respectivas pertenencias y admiten filtro `activo`;
+  altas responden 201 y actividad responde 200 con DTO sin credenciales.
+- Se rechaza con 409 `CATALOGO_EN_USO_EN_PEDIDO_FUTURO` desactivar una tarea o
+  establecimiento referenciado por un pedido futuro. No se modifica ni cancela
+  el pedido como efecto indirecto.
+- Todas las mutaciones requieren Origin permitido y JSON; recursos ajenos se
+  responden con 404 genérico.
+
+### Asistencia y cierre
+
+**Fuentes:** RN-018/020/022/027/062/063/066/155/166/167; REQ-UATRE-002/003;
+UC-UATRE-004; A-28.
+
+- SECCIONAL opera exclusivamente la asistencia de su propia seccional y de la
+  jornada actual mediante `POST /asistencia/hoy/abrir`,
+  `PATCH /asistencia/hoy/registros/{trabajador_id}` y
+  `POST /asistencia/hoy/cerrar`. Todas requieren Origin permitido y JSON.
+- Apertura: crea solo los registros faltantes para números activos con
+  `presente=false`, `verificado=false`, `cerrado=false`; no modifica los flags
+  de presencia del trabajador. Repetirla no duplica registros.
+- Actualización: entrada `{ presente }`; valida pertenencia, jornada sin cerrar
+  y número activo. Actualiza `presente` y `verificado=true`. ANOTADO permanece
+  independiente.
+- Cierre: después de las 07:40 y solo si todos los registros están verificados.
+  En una transacción sincroniza flags, descuenta atrasos por ausencia y ejecuta
+  el procesamiento de la cola habilitada. Tras las 07:40 los pedidos esperan
+  este cierre real, no usan asistencia anterior.
+- 409 para asistencia ya cerrada, cierre temprano o registros sin verificar; 404
+  para trabajador ajeno o no activo. No exponer resultados internos del motor.
+- **Pendiente de implementación:** migración `asistencia.verificado`, ajuste de
+  triggers para no resetear flags al abrir y rutas/servicio transaccional.
 
 ### POST /trabajadores
 
@@ -282,24 +416,36 @@ políticas exactas de seccional/empresa requieren D-29 y D-32.
 - Designación: id, pedido_id, empresa, tarea, establecimiento nullable, horario_inicio
   ISO, estado DESIGNADO/TRABAJANDO. Sin información de otros trabajadores.
 - 401 `SESION_INVALIDA`; 403 `ACTOR_NO_AUTORIZADO` / `CAMBIO_PASSWORD_REQUERIDO`.
-- **Provisional:** significado temporal de asistencia D-02/D-04 y acceso inactivo D-32.
-  No convertir condiciones coexistentes en un único estado.
+- El significado temporal de asistencia se consolida en A-28; D-32 mantiene
+  pendiente el acceso de cuentas inactivas. No convertir condiciones coexistentes
+  en un único estado.
 
 ## 7. Estado del contrato formal
 
-OpenAPI 3.1 inicial cubre login, me, logout y estado personal. Incluye DTOs, cookie,
-respuestas y marcas `x-decision-pendiente`. Es un subconjunto de diseño; no describe
-servidor real ni acredita implementación. Cambio de contraseña y altas se incorporarán
-al contrato formal al precisar sus validaciones pendientes.
+OpenAPI 3.1 v0.2.0 cubre login, consulta/cierre de sesión, cambio de contraseña
+inicial, estado personal y operaciones iniciales de registro/consulta/gestión de
+seccionales, empresas y trabajadores. Incluye DTOs, errores, cookie, marcas
+`x-decision-pendiente` y `x-implementation-status`. Las rutas sin esa última
+marca están implementadas actualmente: healthchecks, login, consulta/cierre de
+sesión, selector y registro público de seccionales, y registro público de empresas.
+Las rutas marcadas `planned` son contratos futuros/provisionales y el cliente no
+debe invocarlas hasta que exista su implementación. El contrato es un subconjunto
+del sistema y no acredita la implementación de esas operaciones futuras.
 
-Operaciones mutables exigen cerrar el mecanismo CSRF antes de implementación.
-La validación sintáctica del archivo no equivale a revisión semántica completa OpenAPI.
+Operaciones mutables del MVP exigen `Origin` exacto de un origen configurado y
+`Content-Type: application/json`; `WEB_ORIGINS` se configura por entorno.
+El mismo control debe aplicarse a futuras operaciones mutables.
+Se verificaron la sintaxis JSON del documento (JSON es subconjunto válido de YAML),
+las referencias internas y la unicidad de operationId. Esto no equivale a una
+validación semántica completa contra OpenAPI.
 
 ## 8. Próximos módulos y cierre
 
-1. Resolver D-29 a D-33 y D-35/D-36 al cerrar acceso y administración; recuperación
-   por email D-34 queda pendiente para implementación posterior.
-2. Rotación, catálogos, asistencia y disponibilidad (D-01 a D-05, D-17 a D-19).
+1. Resolver D-29, D-30, D-32, D-33 y D-35/D-36 al cerrar acceso y administración;
+   recuperación por email D-34 queda pendiente para implementación posterior. D-31
+   está consolidada mediante A-23.
+2. Implementar las migraciones y contratos formalizados de administración,
+   catálogos, asistencia y disponibilidad antes de habilitar esos módulos.
 3. Pedidos, motor y designaciones (D-06 a D-14, D-20, D-23 a D-27).
 4. Pizarrón e historial (D-15 y D-16).
 5. Ampliar OpenAPI y revisar cada operación contra RN/REQ/UC, errores,

@@ -1,0 +1,296 @@
+// Prisma schema del Sistema de Gestión y Asignación de Personal Eventual (UATRE).
+//
+// Este esquema refleja el modelo físico ya revisado y aprobado en
+// BD/bd_uatre.sql (15 tablas). NO se modela aquí, y permanecen solo como
+// SQL en prisma/migrations/0001_init/migration.sql:
+//   - Las 7 vistas del motor (v_trabajadores_elegibles, v_atrasados_elegibles,
+//     v_rotacion_disponible, v_excepcional_etapa1/2/3, v_estado_trabajador).
+//   - Los 9 triggers de sincronización (asistencia, atrasos, sanciones,
+//     estados de designación).
+//   - Las 3 funciones del motor (fn_decidir_procesamiento_pedido,
+//     fn_ejecutar_motor, fn_procesar_cola_pedidos). El backend debe invocarlas
+//     (p. ej. vía $queryRaw/$executeRaw), nunca reimplementar su lógica en JS.
+//   - Los índices únicos parciales (uq_designacion_activa_trabajador,
+//     uq_usuario_seccional), porque Prisma Schema Language no admite
+//     cláusulas WHERE en índices/constraints únicos declarativos.
+//
+// Cualquier cambio de modelo de datos debe revisarse primero contra
+// docs/base_datos.md y docs/decisiones-pendientes.md (ver nota C-05 sobre
+// la discrepancia entre el modelo de negocio de 13 tablas y el físico de 15).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Seccional {
+  id              Int     @id @default(autoincrement())
+  numero          Int     @unique
+  localidad       String  @db.VarChar(100)
+  provincia       String  @db.VarChar(100)
+  puntoRotacion   Int     @default(1) @map("punto_rotacion")
+  cantidadNumeros Int     @default(0) @map("cantidad_numeros")
+  activo          Boolean @default(true)
+
+  empresas        Empresa[]
+  trabajadores    Trabajador[]
+  usuarios        Usuario[]
+  listaRotacion   ListaRotacion[]
+  pedidos         Pedido[]
+  pedidoHistorial PedidoHistorial[]
+
+  @@map("seccionales")
+}
+
+model Empresa {
+  id          Int     @id @default(autoincrement())
+  seccionalId Int     @map("seccional_id")
+  nombre      String  @db.VarChar(200)
+  localidad   String? @db.VarChar(100)
+  provincia   String? @db.VarChar(100)
+  activa      Boolean @default(true)
+
+  seccional        Seccional         @relation(fields: [seccionalId], references: [id])
+  establecimientos Establecimiento[]
+  tareas           TareaEmpresa[]
+  usuarios         Usuario[]
+  inhabilitaciones Inhabilitacion[]
+  pedidos          Pedido[]
+  pedidoHistorial  PedidoHistorial[]
+
+  @@map("empresas")
+}
+
+model Establecimiento {
+  id        Int     @id @default(autoincrement())
+  empresaId Int     @map("empresa_id")
+  nombre    String  @db.VarChar(200)
+  direccion String  @db.VarChar(300)
+  localidad String? @db.VarChar(100)
+  provincia String? @db.VarChar(100)
+  activo    Boolean @default(true)
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id])
+  pedidos Pedido[]
+
+  @@unique([empresaId, nombre], map: "uq_establecimiento_empresa_nombre")
+  @@unique([id, empresaId], map: "uq_establecimiento_empresa_id")
+  @@map("establecimientos")
+}
+
+model TareaEmpresa {
+  id        Int     @id @default(autoincrement())
+  empresaId Int     @map("empresa_id")
+  nombre    String  @db.VarChar(200)
+  activa    Boolean @default(true)
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id])
+  pedidos Pedido[]
+
+  @@unique([empresaId, nombre], map: "uq_tarea_empresa_nombre")
+  @@unique([id, empresaId], map: "uq_tarea_empresa_id")
+  @@map("tareas_empresa")
+}
+
+model Trabajador {
+  id           Int     @id @default(autoincrement())
+  seccionalId  Int     @map("seccional_id")
+  nombre       String  @db.VarChar(100)
+  apellido     String  @db.VarChar(100)
+  documento    String  @unique @db.VarChar(20)
+  telefono     String? @db.VarChar(20)
+  activo       Boolean @default(true)
+  presenteHoy  Boolean @default(false) @map("presente_hoy")
+  presenteAyer Boolean @default(false) @map("presente_ayer")
+  anotado      Boolean @default(false)
+
+  seccional        Seccional        @relation(fields: [seccionalId], references: [id])
+  usuarios         Usuario[]
+  listaRotacion    ListaRotacion[]
+  asistencias      Asistencia[]
+  atraso           Atraso?
+  sancion          Sancion?
+  inhabilitaciones Inhabilitacion[]
+  designaciones    Designacion[]
+
+  @@map("trabajadores")
+}
+
+// `tipo` queda como VARCHAR (no enum nativo) porque la tabla física lo define
+// como VARCHAR(20) con un CHECK, no como un tipo ENUM de PostgreSQL.
+model Usuario {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique @db.VarChar(200)
+  passwordHash  String   @map("password_hash") @db.VarChar(255)
+  tipo          String   @db.VarChar(20)
+  seccionalId   Int?     @map("seccional_id")
+  empresaId     Int?     @map("empresa_id")
+  trabajadorId  Int?     @map("trabajador_id")
+  activo        Boolean  @default(true)
+  primeraVezLogin Boolean @default(false) @map("primera_vez_login")
+  fechaCreacion DateTime @default(now()) @map("fecha_creacion")
+
+  seccional  Seccional?  @relation(fields: [seccionalId], references: [id])
+  empresa    Empresa?    @relation(fields: [empresaId], references: [id])
+  trabajador Trabajador? @relation(fields: [trabajadorId], references: [id])
+  sesiones   Sesion[]
+
+  @@map("usuarios")
+}
+
+model Sesion {
+  id              Int      @id @default(autoincrement())
+  tokenHash       String   @unique(map: "uq_sesiones_token_hash") @map("token_hash") @db.Char(64)
+  usuarioId       Int      @map("usuario_id")
+  fechaCreacion   DateTime @default(now()) @map("fecha_creacion") @db.Timestamp(6)
+  fechaExpiracion DateTime @map("fecha_expiracion") @db.Timestamp(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([fechaExpiracion], map: "ix_sesiones_fecha_expiracion")
+  @@map("sesiones")
+}
+
+model ListaRotacion {
+  id           Int     @id @default(autoincrement())
+  seccionalId  Int     @map("seccional_id")
+  numero       Int
+  trabajadorId Int?    @map("trabajador_id")
+  activo       Boolean @default(true)
+
+  seccional  Seccional   @relation(fields: [seccionalId], references: [id])
+  trabajador Trabajador? @relation(fields: [trabajadorId], references: [id])
+
+  @@unique([seccionalId, numero], map: "uq_lista_numero")
+  @@map("lista_rotacion")
+}
+
+model Asistencia {
+  id           Int      @id @default(autoincrement())
+  trabajadorId Int      @map("trabajador_id")
+  fecha        DateTime @db.Date
+  presente     Boolean  @default(false)
+  verificado   Boolean  @default(false)
+  cerrado      Boolean  @default(false)
+
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@unique([trabajadorId, fecha], map: "uq_asistencia_trabajador_fecha")
+  @@map("asistencia")
+}
+
+model Atraso {
+  id                Int       @id @default(autoincrement())
+  trabajadorId      Int       @unique @map("trabajador_id")
+  cantidad          Int       @default(0)
+  fechaPrimerAtraso DateTime? @map("fecha_primer_atraso")
+
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@map("atrasos")
+}
+
+model Sancion {
+  id               Int       @id @default(autoincrement())
+  trabajadorId     Int       @unique @map("trabajador_id")
+  turnosPendientes Int       @default(0) @map("turnos_pendientes")
+  fechaInicio      DateTime  @default(now()) @map("fecha_inicio")
+  fechaFin         DateTime? @map("fecha_fin")
+
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@map("sanciones")
+}
+
+model Inhabilitacion {
+  id                  Int      @id @default(autoincrement())
+  trabajadorId        Int      @map("trabajador_id")
+  empresaId           Int      @map("empresa_id")
+  fechaInhabilitacion DateTime @default(now()) @map("fecha_inhabilitacion")
+
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+  empresa    Empresa    @relation(fields: [empresaId], references: [id])
+
+  @@unique([trabajadorId, empresaId], map: "uq_inhabilitacion")
+  @@map("inhabilitaciones")
+}
+
+// `estado` queda como VARCHAR (ver nota sobre Usuario.tipo arriba).
+model Pedido {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int      @map("empresa_id")
+  seccionalId       Int      @map("seccional_id")
+  fecha             DateTime @db.Date
+  horarioInicio     DateTime @map("horario_inicio") @db.Time
+  cantRequerida     Int      @map("cant_requerida")
+  tareaId           Int      @map("tarea_id")
+  establecimientoId Int?     @map("establecimiento_id")
+  estado            String   @default("PENDIENTE") @db.VarChar(20)
+  fechaCreacion     DateTime @default(now()) @map("fecha_creacion")
+
+  empresa         Empresa           @relation(fields: [empresaId], references: [id])
+  seccional       Seccional         @relation(fields: [seccionalId], references: [id])
+  tarea           TareaEmpresa      @relation(fields: [tareaId, empresaId], references: [id, empresaId], map: "fk_pedidos_tarea")
+  establecimiento Establecimiento?  @relation(fields: [establecimientoId, empresaId], references: [id, empresaId], map: "fk_pedidos_establecimiento")
+  colaPedido      ColaPedido?
+  designaciones   Designacion[]
+  historial       PedidoHistorial[]
+
+  @@map("pedidos")
+}
+
+model ColaPedido {
+  id                           Int      @id @default(autoincrement())
+  pedidoId                     Int      @unique @map("pedido_id")
+  fechaEncolamiento            DateTime @default(now()) @map("fecha_encolamiento")
+  fechaProcesamientoProgramado DateTime @map("fecha_procesamiento_programado")
+  orden                        BigInt   @unique @default(autoincrement())
+  estado                       String   @default("PENDIENTE") @db.VarChar(20)
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id])
+
+  @@map("cola_pedidos")
+}
+
+model Designacion {
+  id               Int       @id @default(autoincrement())
+  pedidoId         Int       @map("pedido_id")
+  trabajadorId     Int       @map("trabajador_id")
+  estado           String    @default("DESIGNADO") @db.VarChar(20)
+  horarioInicio    DateTime  @map("horario_inicio")
+  horarioFin       DateTime? @map("horario_fin")
+  esExcepcional    Boolean   @default(false) @map("es_excepcional")
+  fechaDesignacion DateTime  @default(now()) @map("fecha_designacion")
+
+  pedido     Pedido     @relation(fields: [pedidoId], references: [id])
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@unique([pedidoId, trabajadorId], map: "uq_designacion")
+  @@map("designaciones")
+}
+
+model PedidoHistorial {
+  id                 Int      @id @default(autoincrement())
+  pedidoId           Int      @map("pedido_id")
+  empresaId          Int      @map("empresa_id")
+  seccionalId        Int      @map("seccional_id")
+  fecha              DateTime @db.Date
+  horarioInicio      DateTime @map("horario_inicio") @db.Time
+  cantidadRequerida  Int      @map("cantidad_requerida")
+  cantidadDesignados Int      @default(0) @map("cantidad_designados")
+  tarea              String?  @db.VarChar(200)
+  establecimiento    String?  @db.VarChar(200)
+  estadoFinal        String   @map("estado_final") @db.VarChar(20)
+  fechaCreacion      DateTime @map("fecha_creacion")
+  fechaCierreJornada DateTime @default(now()) @map("fecha_cierre_jornada")
+
+  pedido    Pedido    @relation(fields: [pedidoId], references: [id])
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  seccional Seccional @relation(fields: [seccionalId], references: [id])
+
+  @@map("pedido_historial")
+}

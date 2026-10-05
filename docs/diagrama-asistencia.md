@@ -13,12 +13,9 @@
 ```mermaid
 graph TD
     Start["UATRE abre apartado de ASISTENCIA"] --> Query["Sistema consulta TRABAJADORES activos<br/>de la seccional para HOY"]
-    Query --> CreateRecs["Crea registros en ASISTENCIA<br/>trabajador_id, fecha=HOY, presente=FALSE, cerrado=FALSE"]
+    Query --> CreateRecs["Crea registros en ASISTENCIA<br/>trabajador_id, fecha=HOY, presente=FALSE, cerrado=FALSE<br/>(los flags NO se resetean al abrir, A-28/D-02)"]
     
-    CreateRec2["<b>Trigger 2: trg_reset_presente_hoy</b><br/>BEFORE INSERT ON asistencia<br/>Resetea trabajador.presente_hoy = FALSE"]
-    CreateRecs --> CreateRec2
-    
-    CreateRec2 --> Display["Muestra CUADRÍCULA:<br/>Número | Trabajador | Estado"]
+    CreateRecs --> Display["Muestra CUADRÍCULA:<br/>Número | Trabajador | Estado"]
     
     Display --> Interact["UATRE interactúa con casilleros"]
     Interact --> SingleTap["Toque simple<br/>= PRESENTE"]
@@ -60,7 +57,7 @@ graph TD
     
     ProcesoCola --> EjecutaMotor["fn_ejecutar_motor(pedido_id) para cada pedido<br/>en orden FIFO"]
     
-    EjecutaMotor --> Designa["Crea DESIGNACIONES<br/>según 3 fases del motor"]
+    EjecutaMotor --> Designa["Crea DESIGNACIONES<br/>según fases 1 y 2 del motor<br/>(cobertura excepcional manual, D-06)"]
     
     Designa --> T5["<b>Trigger 5: trg_descontar_atraso_al_designar</b><br/>AFTER INSERT ON designaciones<br/>Descuenta 1 atraso si tenía"]
     
@@ -125,8 +122,9 @@ UATRE hace clic en "CERRAR ASISTENCIA"
 └─ Motor comienza automáticamente
    ├─ fn_ejecutar_motor(pedido_id) para cada pedido en COLA_PEDIDOS
    │  ├─ Fase 1: Atrasados elegibles
-   │  ├─ Fase 2: Rotación ordinaria
-   │  └─ Fase 3: Cobertura excepcional
+   │  └─ Fase 2: Rotación ordinaria
+   │     (La Fase 3 de cobertura excepcional es MANUAL según D-06; el SQL
+   │      actual aún la ejecuta automáticamente — bloqueador pendiente)
    │
    └─ INSERT DESIGNACIONES
       └─ Trigger 5: trg_descontar_atraso_al_designar
@@ -144,7 +142,7 @@ UATRE hace clic en "CERRAR ASISTENCIA"
        │
 06:30  │ UATRE abre apartado de ASISTENCIA
        │ → Sistema crea registros en ASISTENCIA (todos con presente=FALSE)
-       │ → Trigger 2 resetea presente_hoy = FALSE para todos
+       │ → Los flags no se resetean al abrir (A-28/D-02)
        │ → Cuadrícula visible
        │
 06:45  │ UATRE toca casilleros (marca PRESENTE/AUSENTE/ANOTADO)
@@ -190,13 +188,16 @@ UATRE hace clic en "CERRAR ASISTENCIA"
 Antes de permitir CERRAR ASISTENCIA:
 ```
 ✓ todos_numeros_activos = COUNT(LISTA_ROTACION WHERE activo=TRUE AND seccional_id=X)
-✓ verificados = COUNT(ASISTENCIA WHERE fecha=HOY AND presente IN (TRUE, FALSE))
+✓ verificados = COUNT(ASISTENCIA WHERE fecha=HOY AND verificado=TRUE)
 ✓ todos_verificados = (verificados == todos_numeros_activos)
 ✓ hora_actual >= TIME '07:40'
 
 Si (todos_verificados AND hora >= 07:40) → Habilitar "CERRAR ASISTENCIA"
 Si NOT todos_verificados → Deshabilitar + mostrar mensaje "Verificar números faltantes"
 ```
+
+> **D-01/A-28:** la validación usa el estado real `verificado = TRUE`
+> (D-01 consolidada), no la mera existencia del registro.
 
 ---
 

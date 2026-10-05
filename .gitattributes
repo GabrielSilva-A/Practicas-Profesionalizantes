@@ -1,0 +1,17 @@
+# Detectar texto automáticamente y normalizarlo a LF al incorporarlo a Git.
+# Esta configuración no reescribe por sí sola los archivos ya versionados.
+* text=auto eol=lf
+
+# Archivos binarios: sin conversión de finales de línea
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.dump binary
+*.backup binary

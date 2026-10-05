@@ -2,7 +2,7 @@
 
 ## Contenido
 
-- `bd_uatre.sql`: DDL completo del diseño de base de datos. Es la copia ejecutable de [database-sql.md](../docs/database-sql.md); ambos archivos deben mantenerse idénticos.
+- `bd_uatre.sql`: DDL completo del diseño de base de datos y **fuente única del esquema físico**. La copia `docs/database-sql.md` fue eliminada el 2026-10-01 por duplicarse byte a byte con este archivo.
 - `bd_uatre_test.sql`: datos de demostración y verificaciones del esquema. Requiere que `bd_uatre.sql` se haya ejecutado previamente.
 
 ## Ejecución
